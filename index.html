@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAI → SD 프롬프트 변환기</title>
+<meta name="description" content="NovelAI의 가중치 블록 문법을 Stable Diffusion(A1111 / ComfyUI) 형식으로 변환하고, 음수 가중치를 네거티브 프롬프트로 분리합니다. 오프라인에서 동작하는 단일 HTML 파일.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#16130F">
+<meta property="og:title" content="NAI → SD 프롬프트 변환기">
+<meta property="og:description" content="NovelAI 가중치 문법을 Stable Diffusion 형식으로 변환. 문법 오류를 원문에서 찾아 바로 수정합니다.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2316130F'/%3E%3Cpath d='M7 9v14M7 9l8 14M15 9v14' stroke='%23E89A3C' stroke-width='2.5' fill='none' stroke-linecap='square'/%3E%3Cpath d='M21 16h6M24 13l3 3-3 3' stroke='%234FA8A0' stroke-width='2.5' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+
+<style>
+  :root{
+    --bg:#16130F;
+    --panel:#1E1A15;
+    --panel-2:#25201A;
+    --rule:#342D24;
+    --ink:#EDE5D8;
+    --muted:#8C8173;
+    --pos:#E89A3C;
+    --neg:#4FA8A0;
+    --err:#D4685F;
+    --warn:#C9A227;
+    /* System stacks only — no network fetch, so the file works fully offline. */
+    --display:'Archivo','Inter','Helvetica Neue',ui-sans-serif,system-ui,-apple-system,'Segoe UI','Pretendard','Noto Sans KR',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,'SF Mono','Cascadia Mono','Roboto Mono',Menlo,Consolas,'D2Coding',monospace;
+
+    /* shared metrics — the highlight backdrop must match the textarea exactly */
+    --ed-font-size:13px;
+    --ed-line-height:1.7;
+    --ed-pad:14px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    padding:32px 24px 64px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* ---------- masthead ---------- */
+  header{border-bottom:1px solid var(--rule);padding-bottom:20px;margin-bottom:28px}
+  .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,5.5vw,52px);letter-spacing:-.03em;line-height:.98;margin:0 0 12px}
+  h1 .arrow{color:var(--pos);font-weight:500;padding:0 .12em}
+  .sub{color:var(--muted);font-size:13px;max-width:64ch;margin:0}
+
+  /* ---------- meter ---------- */
+  .meter{display:flex;gap:2px;height:34px;margin:24px 0 4px;border:1px solid var(--rule);background:var(--panel);overflow:hidden}
+  .meter div{display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;overflow:hidden;transition:flex-grow .45s cubic-bezier(.2,.8,.2,1);min-width:0}
+  .meter .m-pos{background:rgba(232,154,60,.16);color:var(--pos);flex-grow:1}
+  .meter .m-neg{background:rgba(79,168,160,.16);color:var(--neg);flex-grow:1}
+  .meter .m-empty{background:transparent;color:var(--muted);flex-grow:1}
+  .meter-note{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:0 0 26px}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+  .panel{background:var(--panel);border:1px solid var(--rule);display:flex;flex-direction:column;min-width:0}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--rule);background:var(--panel-2)}
+  .panel-title{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;margin:0}
+  .panel-title.pos{color:var(--pos)}
+  .panel-title.neg{color:var(--neg)}
+  .count{font-size:11px;color:var(--muted);letter-spacing:.08em}
+
+  /* ---------- editor with highlight backdrop ---------- */
+  .editor{position:relative}
+  .backdrop,.editor textarea{
+    font-family:var(--mono);
+    font-size:var(--ed-font-size);
+    line-height:var(--ed-line-height);
+    padding:var(--ed-pad);
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow-wrap:break-word;
+    border:0;
+    margin:0;
+    letter-spacing:0;
+    tab-size:4;
+  }
+  .backdrop{
+    position:absolute;inset:0;
+    overflow:hidden;
+    color:transparent;
+    pointer-events:none;
+    z-index:0;
+  }
+  .editor textarea{
+    position:relative;
+    z-index:1;
+    display:block;
+    width:100%;
+    min-height:230px;
+    resize:vertical;
+    background:transparent;
+    color:var(--ink);
+    outline:none;
+    overflow-y:auto;
+  }
+  .editor.small textarea{min-height:110px}
+  .editor textarea::placeholder{color:#5C5348}
+  .editor textarea:focus-visible{box-shadow:inset 0 0 0 2px var(--pos)}
+  mark{background:transparent;color:transparent;border-radius:2px}
+  mark.e-error{background:rgba(212,104,95,.30);box-shadow:0 0 0 1px rgba(212,104,95,.6)}
+  mark.e-warn{background:rgba(201,162,39,.26);box-shadow:0 0 0 1px rgba(201,162,39,.55)}
+  mark.e-active{background:rgba(232,154,60,.48);box-shadow:0 0 0 1px var(--pos)}
+
+  .out{padding:14px;min-height:150px;font-size:13px;line-height:1.8;word-break:break-word;white-space:pre-wrap;flex:1}
+  .out:empty::before{content:'—';color:#4B4339}
+  .w{color:var(--pos)}
+  .out.neg .w{color:var(--neg)}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:14px;border-top:1px solid var(--rule);background:var(--panel-2)}
+  label.opt{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+  label.opt:hover{color:var(--ink)}
+  input[type=checkbox]{appearance:none;width:14px;height:14px;border:1px solid var(--rule);background:var(--bg);display:grid;place-content:center;cursor:pointer;flex:none}
+  input[type=checkbox]:checked{background:var(--pos);border-color:var(--pos)}
+  input[type=checkbox]:checked::after{content:'';width:7px;height:4px;border:2px solid var(--bg);border-top:0;border-right:0;transform:rotate(-45deg) translate(0,-1px)}
+  input[type=checkbox]:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+  select{background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:4px 6px;cursor:pointer}
+  button{font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;background:transparent;color:var(--muted);border:1px solid var(--rule);padding:6px 12px;cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+  button:hover:not(:disabled){color:var(--ink);border-color:var(--ink)}
+  button:disabled{opacity:.38;cursor:default}
+  button:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+  button.copied{color:var(--pos);border-color:var(--pos)}
+  button.primary{color:var(--pos);border-color:var(--pos)}
+  button.primary:hover:not(:disabled){background:rgba(232,154,60,.14)}
+
+  /* ---------- diagnostics ---------- */
+  .diag{margin-top:20px;border:1px solid var(--rule);background:var(--panel)}
+  .diag-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--rule);background:var(--panel-2)}
+  .diag-head h2{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;margin:0;color:var(--muted)}
+  .tally{display:flex;gap:14px;font-size:11px;letter-spacing:.08em}
+  .tally .t-err{color:var(--err)}
+  .tally .t-warn{color:var(--warn)}
+  .tally .t-ok{color:var(--neg)}
+
+  .issue{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--rule)}
+  .issue:last-child{border-bottom:0}
+  .issue:hover{background:rgba(255,255,255,.02)}
+  .sev{flex:none;width:3px;align-self:stretch;border-radius:2px;min-height:32px}
+  .sev.error{background:var(--err)}
+  .sev.warn{background:var(--warn)}
+  .issue-body{flex:1;min-width:0}
+  .issue-title{font-size:12.5px;color:var(--ink);margin:0 0 3px}
+  .issue-title code{color:var(--pos)}
+  .issue-detail{font-size:11.5px;color:var(--muted);margin:0;line-height:1.6}
+  .issue-detail code{color:var(--pos);word-break:break-all}
+  .at{color:var(--muted);font-weight:400}
+  .issue-acts{flex:none;display:flex;gap:6px;align-items:center}
+  .issue-acts button{padding:4px 9px;font-size:10px}
+  .clean{padding:16px 14px;font-size:12px;color:var(--neg)}
+  .idle{padding:16px 14px;font-size:12px;color:#4B4339}
+
+  /* ---------- rules ---------- */
+  .rules{margin-top:36px;border-top:1px solid var(--rule);padding-top:24px}
+  .rules h2{font-family:var(--display);font-weight:800;font-size:15px;margin:0 0 14px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+  td code{color:var(--pos)}
+  td.n code{color:var(--neg)}
+  .rules p{color:var(--muted);font-size:12.5px;max-width:74ch}
+
+  /* ---------- footer ---------- */
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between;font-size:11px;color:var(--muted)}
+  footer .kbd{display:flex;gap:14px;flex-wrap:wrap}
+  footer kbd{font-family:var(--mono);font-size:10px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:1px 5px;color:var(--ink)}
+  footer a{color:var(--muted)}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  @media print{body{background:#fff;color:#000}.controls,.issue-acts,button{display:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Prompt syntax utility</p>
+    <h1>NovelAI <span class="arrow">→</span> Stable Diffusion</h1>
+    <p class="sub">NAI의 <code>가중치::…::</code> 블록을 A1111 / ComfyUI가 읽는 <code>(태그:1.4)</code> 형식으로 바꾸고, 음수 가중치는 네거티브 채널로 분리합니다. 문법이 깨진 자리는 원문에 직접 표시하고 그 자리에서 고칠 수 있습니다.</p>
+  </header>
+
+  <div class="meter" id="meter">
+    <div class="m-empty">입력을 붙여넣으면 채널이 갈라집니다</div>
+  </div>
+  <p class="meter-note" id="meterNote">Positive / Negative 라우팅</p>
+
+  <div class="grid">
+
+    <div class="col">
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">NAI 프롬프트</h2>
+          <span class="count" id="inCount">0자</span>
+        </div>
+        <div class="editor">
+          <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+          <textarea id="input" spellcheck="false" placeholder="여기에 NAI 프롬프트를 붙여넣으세요.
+
+예시:
+1girl, solo::,1.4::detailed background,cinematic lighting::,-2::blurry,lowres::"></textarea>
+        </div>
+        <div class="controls">
+          <label class="opt"><input type="checkbox" id="optArtist"> <span><code>artist:</code> 처리</span></label>
+          <select id="artistMode">
+            <option value="keep">artist: 유지</option>
+            <option value="by">by 이름</option>
+            <option value="strip">이름만</option>
+          </select>
+          <label class="opt"><input type="checkbox" id="optDedupe" checked> 중복 제거</label>
+          <label class="opt"><input type="checkbox" id="optUnderscore"> 공백 → _</label>
+          <label class="opt" for="nestMode">중첩</label>
+          <select id="nestMode">
+            <option value="replace">안쪽 값 우선</option>
+            <option value="multiply">곱하기 (NAI 방식)</option>
+          </select>
+          <button id="undoBtn" type="button" disabled>되돌리기</button>
+          <button id="clearBtn" type="button">지우기</button>
+          <label class="opt" style="margin-left:auto">
+            <input type="file" id="dictFile" accept=".txt,.csv,.tsv,text/plain" style="display:none">
+            <button id="dictBtn" type="button">태그 사전 추가</button>
+          </label>
+          <span class="count" id="dictCount" title="내장 사전 + 불러온 사전"></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title neg">내 네거티브 (선택)</h2>
+          <span class="count" id="negInCount">0개</span>
+        </div>
+        <div class="editor small">
+          <textarea id="negInput" spellcheck="false" placeholder="평소 쓰는 네거티브를 붙여넣으세요. 아래 Negative 결과에 합쳐집니다.
+
+예시: worst quality, low quality, (bad hands:1.3)"></textarea>
+        </div>
+        <div class="controls">
+          <label class="opt"><input type="checkbox" id="optNegFirst" checked> 내 네거티브를 앞에</label>
+          <button id="clearNegBtn" type="button">지우기</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title pos">Positive</h2>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="count" id="posCount">0개</span>
+            <button id="copyPos" type="button">복사</button>
+          </div>
+        </div>
+        <div class="out pos" id="outPos"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title neg">Negative</h2>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="count" id="negCount">0개</span>
+            <button id="copyNeg" type="button">복사</button>
+          </div>
+        </div>
+        <div class="out neg" id="outNeg"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="diag">
+    <div class="diag-head">
+      <h2>문법 검사</h2>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="tally" id="tally"></div>
+        <button id="fixAllBtn" type="button" class="primary" disabled>고칠 수 있는 것 전부</button>
+      </div>
+    </div>
+    <div id="issues"><div class="idle">입력 대기 중</div></div>
+  </div>
+
+  <section class="rules">
+    <h2>변환 규칙</h2>
+    <table>
+      <tr><th style="width:34%">NAI</th><th style="width:33%">SD</th><th>비고</th></tr>
+      <tr><td><code>2::a,b::</code></td><td><code>(a:2.0), (b:2.0)</code></td><td>닫는 <code>::</code>까지 블록 안 전부에 적용</td></tr>
+      <tr><td><code>1.4::a::</code></td><td><code>(a:1.4)</code></td><td>SD는 블록 단위 가중치가 없어 태그마다 풀어씀</td></tr>
+      <tr><td><code>1.2::x,1.5::y::,z::</code></td><td><code>(x:1.2), (y:1.5), (z:1.2)</code></td><td>중첩 모드가 "곱하기"면 y는 1.8</td></tr>
+      <tr class="n"><td><code>-2::a::</code></td><td><code>(a:1.2)</code> → 네거티브</td><td>SD엔 음수 가중치가 없어 채널을 옮김</td></tr>
+      <tr class="n"><td><code>-6::a::</code></td><td><code>(a:1.6)</code> → 네거티브</td><td>1 + |w|×0.1, 최대 1.8로 제한</td></tr>
+      <tr><td><code>가중치 1</code></td><td><code>tag</code></td><td>괄호 없이 그대로</td></tr>
+    </table>
+    <p style="margin-top:16px">아티스트 태그는 <code>artist:이름</code> 그대로 통과합니다 — Danbooru 태그로 학습된 모델은 이 형식을 그대로 읽습니다. 다만 15명 넘게 섞으면 스타일이 서로 상쇄돼 뭉개지니 3~5명으로 줄이고 가중치 차이를 크게 주는 편이 결과가 낫습니다. <code>rating:</code> 계열 태그도 그대로 통과시키니 Illustrious / NoobAI 계열이면 <code>rating_</code> 형태로 직접 고쳐 쓰세요.</p>
+  </section>
+
+  <footer>
+    <div class="kbd">
+      <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> 되돌리기</span>
+    </div>
+    <div>v1.2 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const input    = $('input');
+  const backdrop = $('backdrop');
+
+  const MAX_NEG = 1.8;
+  let history = [];
+  let issues  = [];
+  let activeIssue = -1;
+
+  /* ================= tag dictionary =================
+     Common Danbooru tags, embedded so the tool stays offline.
+     Tags NOT in this list pass through untouched — the dictionary only
+     powers typo suggestions, it never blocks anything. */
+  const DICT_BASE = `1girl,2girls,3girls,4girls,5girls,6+girls,multiple girls,1boy,2boys,3boys,multiple boys,1other,solo,solo focus,group,crowd,couple,siblings,
+masterpiece,best quality,high quality,normal quality,low quality,worst quality,bad quality,absurdres,highres,lowres,very aesthetic,aesthetic,displeasing,very displeasing,newest,recent,oldest,amateur,unfinished,incomplete,sketch,lineart,no lineart,monochrome,greyscale,partially colored,spot color,flat color,limited palette,high contrast,pastel colors,muted colors,vibrant colors,jpeg artifacts,film grain,chromatic aberration,scan artifacts,artistic error,error,dithering,halftone,screentone,watermark,signature,artist name,logo,stamp,dated,username,web address,speech bubble,thought bubble,text,english text,japanese text,no text,censored,uncensored,mosaic censoring,bar censor,duplicate,collaboration,artist collaboration,too many watermarks,negative space,blank page,letterboxed,border,white border,black border,rounded corners,year 2020,year 2021,year 2022,year 2023,year 2024,year 2025,year 2026,
+portrait,upper body,lower body,full body,cowboy shot,close-up,wide shot,very wide shot,dutch angle,from above,from below,from side,from behind,pov,first-person view,three-quarter view,profile,straight-on,looking at viewer,looking away,looking back,looking to the side,looking down,looking up,looking afar,looking ahead,looking over eyewear,eye contact,facing viewer,facing away,facing another,symmetry,dynamic pose,contrapposto,foreshortening,depth of field,blurry,blurry background,blurry foreground,bokeh,motion blur,motion lines,speed lines,emphasis lines,multiple views,reference sheet,character sheet,turnaround,cropped,out of frame,
+short hair,medium hair,long hair,very long hair,absurdly long hair,bald,bob cut,pixie cut,hime cut,ponytail,twintails,short twintails,low twintails,twin braids,side ponytail,high ponytail,low ponytail,folded ponytail,braid,braided ponytail,french braid,crown braid,single braid,side braid,braided bangs,hair bun,double bun,single hair bun,cone hair bun,topknot,ahoge,huge ahoge,antenna hair,bangs,blunt bangs,swept bangs,parted bangs,crossed bangs,asymmetrical bangs,hair between eyes,sidelocks,hair over one eye,hair over eyes,messy hair,spiked hair,wavy hair,curly hair,straight hair,drill hair,twin drills,hair intakes,hair flaps,flipped hair,hair pulled back,slicked back hair,undercut,streaked hair,multicolored hair,two-tone hair,gradient hair,colored inner hair,colored tips,black hair,brown hair,light brown hair,blonde hair,platinum blonde hair,white hair,grey hair,silver hair,red hair,orange hair,pink hair,purple hair,light purple hair,blue hair,light blue hair,dark blue hair,aqua hair,green hair,dark green hair,wet hair,shiny hair,floating hair,hair spread out,
+blue eyes,red eyes,green eyes,yellow eyes,orange eyes,purple eyes,pink eyes,brown eyes,black eyes,grey eyes,aqua eyes,amber eyes,golden eyes,heterochromia,multicolored eyes,gradient eyes,glowing eyes,sparkling eyes,empty eyes,solid circle eyes,half-closed eyes,closed eyes,one eye closed,wink,squinting,wide-eyed,glaring,staring,crazy eyes,sanpaku,tsurime,tareme,jitome,bags under eyes,eyelashes,long eyelashes,colored eyelashes,thick eyebrows,short eyebrows,v-shaped eyebrows,eyebrows visible through hair,mole under eye,mole under mouth,eyeliner,eyeshadow,mascara,makeup,lipstick,red lips,undetailed eyes,bad eyes,bad pupils,cross-eyed,glazed eye,bad glabella,
+smile,grin,evil grin,smirk,light smile,gentle smile,open mouth,closed mouth,parted lips,lips,thick lips,tongue,tongue out,teeth,upper teeth only,sharp teeth,fang,fangs,skin fang,clenched teeth,frown,pout,angry,annoyed,embarrassed,blush,nervous,flustered,expressionless,serious,sad,crying,tears,tearing up,happy,laughing,surprised,shocked,scared,worried,confused,thinking,smug,sleepy,tired,bored,drunk,drooling,sweat,sweatdrop,heavy breathing,sigh,shaded face,gloom \\(expression\\),turn pale,trembling,notice lines,spoken ellipsis,spoken question mark,spoken exclamation mark,\\!,\\?,
+shirt,t-shirt,white shirt,black shirt,red shirt,blue shirt,collared shirt,dress shirt,off-shoulder shirt,sleeveless shirt,striped shirt,plaid shirt,print shirt,crop top,tank top,camisole,blouse,sweater,turtleneck,ribbed sweater,sweater vest,cardigan,hoodie,jacket,black jacket,white jacket,red jacket,blue jacket,denim jacket,leather jacket,bomber jacket,track jacket,letterman jacket,blazer,open jacket,jacket on shoulders,coat,trench coat,winter coat,duffel coat,off-shoulder coat,fur coat,fur trim,fur collar,vest,waistcoat,suit,business suit,tuxedo,formal,uniform,school uniform,serafuku,sailor collar,gym uniform,military uniform,police uniform,maid,maid headdress,maid apron,apron,dress,sundress,white dress,black dress,red dress,frilled dress,lace-trimmed dress,wedding dress,china dress,evening gown,kimono,yukata,obi,hakama,miko,skirt,pleated skirt,miniskirt,microskirt,long skirt,pencil skirt,plaid skirt,frilled skirt,shorts,short shorts,denim shorts,dolphin shorts,gym shorts,pants,jeans,denim,black pants,white pants,cargo pants,leggings,yoga pants,overalls,jumpsuit,bodysuit,leotard,swimsuit,one-piece swimsuit,bikini,school swimsuit,competition swimsuit,sarong,pajamas,nightgown,robe,bathrobe,plain clothes,casual,alternate costume,official alternate costume,
+scarf,plaid scarf,gloves,fingerless gloves,elbow gloves,black gloves,white gloves,mittens,socks,white socks,black socks,kneehighs,thighhighs,over-kneehighs,pantyhose,black pantyhose,white pantyhose,tights,fishnets,garter straps,zettai ryouiki,shoes,boots,knee boots,thigh boots,ankle boots,combat boots,high heels,sandals,sneakers,loafers,mary janes,geta,slippers,barefoot,bare legs,bare arms,bare shoulders,off shoulder,single bare shoulder,collarbone,midriff,navel,stomach,cleavage,bra,underwear,sports bra,strap slip,clothes writing,graphic tee,character print,emblem,patch,clothing cutout,cleavage cutout,shoulder cutout,back cutout,zipper,buttons,unbuttoned,open clothes,open shirt,partially unbuttoned,untucked shirt,sleeves rolled up,sleeves past wrists,long sleeves,short sleeves,sleeveless,wide sleeves,detached sleeves,puffy sleeves,puffy short sleeves,
+hat,cap,baseball cap,beanie,beret,sun hat,straw hat,witch hat,top hat,mini hat,hood,hood up,hood down,hair ornament,hairclip,hairpin,hair ribbon,hair bow,x hair ornament,star hair ornament,heart hair ornament,hair flower,hairband,headband,headdress,ribbon,bow,bowtie,red bowtie,necktie,black necktie,red necktie,loose necktie,choker,black choker,necklace,pendant,jewelry,earrings,hoop earrings,stud earrings,single earring,piercing,ear piercing,lip piercing,eyebrow piercing,bracelet,bangle,ring,watch,wristwatch,glasses,semi-rimless eyewear,under-rim eyewear,rimless eyewear,round eyewear,black-framed eyewear,red-framed eyewear,sunglasses,aviator sunglasses,tinted eyewear,eyewear on head,lowered eyewear,adjusting eyewear,goggles,goggles on head,mask,mouth mask,surgical mask,mask pull,headphones,headphones around neck,earbuds,bag,handbag,shoulder bag,backpack,school bag,belt,black belt,buckle,armband,wristband,sweatband,gauntlets,armor,shoulder armor,pauldrons,breastplate,cape,cloak,wings,angel wings,demon wings,bat wings,feathered wings,halo,horns,demon horns,animal ears,cat ears,dog ears,fox ears,rabbit ears,wolf ears,mouse ears,bear ears,animal ear fluff,tail,cat tail,dog tail,fox tail,wolf tail,demon tail,elf,pointy ears,dark elf,
+tan,tanlines,dark skin,dark-skinned female,dark-skinned male,pale skin,very dark skin,shiny skin,sweaty,wet,freckles,mole,beauty mark,scar,scar on face,scar across eye,scar on arm,scar on chest,scar on neck,scar on cheek,scar on shoulder,scar on body,burn scar,bandaid,bandaid on face,bandaid on nose,bandages,abs,muscular,muscular female,muscular male,toned,toned female,athletic,slim,skinny,curvy,plump,petite,tall,tall female,height difference,wide hips,thick thighs,thighs,thigh gap,legs,long legs,flat chest,small breasts,medium breasts,large breasts,huge breasts,armpits,back,shoulder blades,nape,jawline,adam's apple,tomboy,gyaru,ganguro,kogal,mature female,old woman,young,child,aged down,aged up,
+standing,standing on one leg,sitting,seiza,wariza,indian style,crossed legs,legs together,legs apart,kneeling,on one knee,squatting,lying,on back,on stomach,on side,reclining,walking,running,jumping,flying,floating,falling,leaning forward,leaning back,leaning to the side,arched back,arms up,arms behind back,arms behind head,arms crossed,crossed arms,arm support,arm at side,arms at sides,hand on hip,hands on hips,hand on own face,hand on own cheek,hand on own chin,hand on own chest,hand in pocket,hands in pockets,hand up,hands up,waving,salute,peace sign,v,double v,pointing,pointing at viewer,finger gun,thumbs up,clenched hand,clenched hands,open hand,outstretched arm,outstretched arms,outstretched hand,reaching,reaching towards viewer,stretching,holding,holding weapon,holding sword,holding gun,holding phone,holding cup,holding food,holding book,holding umbrella,holding bag,holding hair,hugging own legs,head tilt,head rest,chin rest,head down,looking at phone,dancing,eating,drinking,smoking,cigarette,cigarette butt,smoke,smoking pipe,pipe in mouth,mouth hold,food in mouth,pocky in mouth,sleeping,yawning,praying,fighting stance,battle,action,midair,crouching,tiptoes,skipping,strolling,wading,swimming,bathing,
+simple background,white background,grey background,black background,gradient background,transparent background,blue background,red background,pink background,yellow background,green background,purple background,brown background,orange background,beige background,two-tone background,multicolored background,abstract background,patterned background,checkered background,striped background,polka dot background,starry background,sparkle background,outdoors,indoors,day,night,sunset,sunrise,dusk,dawn,evening,morning,twilight,sky,blue sky,cloudy sky,cloud,clouds,starry sky,night sky,star \\(sky\\),full moon,crescent moon,moon,moonlight,sun,sunlight,sunbeam,dappled sunlight,lens flare,backlighting,rim lighting,sidelighting,cinematic lighting,volumetric lighting,soft lighting,dramatic lighting,detailed background,scenery,landscape,nature,rain,heavy rain,snow,snowing,wind,leaves,falling leaves,autumn leaves,cherry blossoms,falling petals,petals,flower,rose,red rose,white flower,sunflower,tulip,lily,tree,forest,grass,field,flower field,wheat field,mountain,mountainous horizon,hill,beach,ocean,sea,waves,water,water drop,splashing,river,lake,pond,waterfall,pool,poolside,city,cityscape,city lights,skyline,skyscraper,building,ruins,street,road,sidewalk,crosswalk,alley,park,playground,school,classroom,chalkboard,hallway,rooftop,bedroom,bed,on bed,pillow,blanket,under covers,living room,couch,sofa,chair,office chair,table,desk,window,windowsill,curtains,door,doorway,kitchen,bathroom,bathtub,cafe,restaurant,library,bookshelf,book,open book,office,train,train station,train interior,bus,bus stop,car,motor vehicle,motorcycle,bicycle,airplane,ship,boat,
+weapon,sword,katana,sheathed,unsheathing,knife,dagger,gun,handgun,rifle,assault rifle,sniper rifle,shotgun,arrow \\(projectile\\),staff,wand,shield,spear,polearm,axe,hammer,scythe,umbrella,parasol,phone,cellphone,smartphone,computer,laptop,keyboard \\(computer\\),mouse \\(computer\\),headset,microphone,camera,guitar,electric guitar,acoustic guitar,piano,violin,drum,instrument,food,fruit,apple,banana,strawberry,orange \\(fruit\\),watermelon,grapes,lemon,peach,cake,cake slice,cupcake,cookie,candy,lollipop,chocolate,ice cream,dango,onigiri,ramen,noodles,sushi,bento,bread,sandwich,hamburger,pizza,coffee,coffee cup,tea,teacup,teapot,cup,mug,bottle,water bottle,glass,wine glass,alcohol,beer,beer mug,sake,cat,black cat,white cat,dog,bird,rabbit,fox,wolf,bear,horse,fish,koi,butterfly,dragon,stuffed toy,stuffed animal,teddy bear,doll,chibi,gift,gift box,balloon,confetti,fireworks,lantern,paper lantern,candle,fire,flame,ice,crystal,gem,coin,money,card,playing card,dice,chess piece,clock,pocket watch,hourglass,key,lock,chain,rope,net,basket,box,cardboard box,barrel,bucket,ladder,
+bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra digits,fewer digits,missing fingers,extra fingers,missing finger,extra arms,extra legs,missing limb,extra limbs,deformed,disfigured,mutation,mutated,long neck,malformed,poorly drawn face,poorly drawn hands,bad illustration,bad portrait,upscaled,image sample,md5 mismatch,resized,downscaled`;
+
+  const dictSet = new Set();       // normalized -> exists
+  const dictDisplay = new Map();   // normalized -> canonical display form
+  const normTag = s => s.toLowerCase().replace(/\\([()])/g,'$1').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  function addDict(raw){
+    raw.split(/[,\n\t]+/).forEach(t => {
+      const disp = t.trim();
+      if(!disp) return;
+      const n = normTag(disp);
+      if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp.replace(/\\([()])/g,'$1')); }
+    });
+  }
+  addDict(DICT_BASE);
+  let customDictCount = 0;
+
+  // Optimal string alignment distance (catches transpositions like "artsit")
+  function osa(a, b, max){
+    if(Math.abs(a.length - b.length) > max) return max + 1;
+    const la = a.length, lb = b.length;
+    let prev2 = null, prev = [], cur = [];
+    for(let j = 0; j <= lb; j++) prev[j] = j;
+    for(let i = 1; i <= la; i++){
+      cur = [i];
+      let rowMin = i;
+      for(let j = 1; j <= lb; j++){
+        const cost = a[i-1] === b[j-1] ? 0 : 1;
+        let v = Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + cost);
+        if(prev2 && i > 1 && j > 1 && a[i-1] === b[j-2] && a[i-2] === b[j-1])
+          v = Math.min(v, prev2[j-2] + 1);
+        cur[j] = v;
+        if(v < rowMin) rowMin = v;
+      }
+      if(rowMin > max) return max + 1;   // early exit — every path already exceeds max
+      prev2 = prev; prev = cur;
+    }
+    return prev[lb];
+  }
+
+  // Returns {tag, dist} for the closest dictionary entry, or null.
+  function nearestTag(norm){
+    const max = norm.length <= 6 ? 1 : 2;
+    let best = null, bestD = max + 1;
+    for(const cand of dictSet){
+      const d = osa(norm, cand, Math.min(bestD - 1, max));
+      if(d < bestD){ bestD = d; best = cand; if(bestD === 0) break; }
+    }
+    return best ? { tag: dictDisplay.get(best), dist: bestD } : null;
+  }
+
+  // Which tags get spellchecked at all
+  function checkable(text){
+    if(text.length < 3) return false;
+    if(/^artist\s*:/i.test(text)) return false;      // artist names are arbitrary
+    if(text.includes(':')) return false;             // rating:..., lora syntax, etc.
+    if(/^\d+(\.\d+)?$/.test(text)) return false;     // stray numbers (already flagged elsewhere)
+    if(/[()]/.test(text.replace(/\\[()]/g,''))) return false; // series disambiguation etc.
+    return true;
+  }
+
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const round2 = n => Math.round(n*100)/100;
+  const wstr   = w => w.toFixed(w % 1 === 0 ? 1 : 2);
+
+  /* ================= parser =================
+     Tracks source positions so every finding can point at the exact spot. */
+  function parse(src, nestMode){
+    const openStack = [];
+    const tags = [];
+    const found = [];
+    let buf = '', bufStart = 0, i = 0;
+
+    const effective = () => {
+      if(!openStack.length) return 1;
+      return nestMode === 'replace'
+        ? openStack[openStack.length-1].weight
+        : openStack.reduce((a,s) => a*s.weight, 1);
+    };
+
+    const flush = () => {
+      if(!buf.trim()){ buf=''; return; }
+      const w = effective();
+      let off = 0;
+      buf.split(',').forEach(part => {
+        const s = part.trim();
+        if(s){
+          const rel = part.indexOf(s);
+          tags.push({ text:s, weight:w, start:bufStart+off+rel, end:bufStart+off+rel+s.length });
+        }
+        off += part.length + 1;
+      });
+      buf = '';
+    };
+
+    while(i < src.length){
+      // A weight opener only counts at a token boundary, so a tag name ending
+      // in digits ("dishwasher1910 ::") is never misread as a weight.
+      const prev = i > 0 ? src[i-1] : '';
+      const atBoundary = i === 0 || /[,:\s(\[]/.test(prev);
+      const m = atBoundary ? /^(-?\d+(?:\.\d+)?)\s*::/.exec(src.slice(i)) : null;
+
+      if(m){
+        flush();
+        openStack.push({ weight:parseFloat(m[1]), pos:i, len:m[0].length, raw:m[1] });
+        i += m[0].length;
+        bufStart = i;
+        continue;
+      }
+      if(src.startsWith('::', i)){
+        flush();
+        if(openStack.length) openStack.pop();
+        else found.push({ kind:'stray-close', start:i, end:i+2 });
+        i += 2;
+        bufStart = i;
+        continue;
+      }
+      if(!buf) bufStart = i;
+      buf += src[i];
+      i++;
+    }
+    flush();
+
+    openStack.forEach(s => found.push({ kind:'unclosed', start:s.pos, end:s.pos+s.len, raw:s.raw }));
+    return { tags, found };
+  }
+
+  /* ================= diagnostics ================= */
+  function diagnose(src, tags, found){
+    const list = [];
+
+    found.forEach(f => {
+      if(f.kind === 'unclosed'){
+        list.push({
+          sev:'error', start:f.start, end:f.end,
+          title:'닫히지 않은 블록 <code>' + esc(f.raw) + '::</code>',
+          detail:'닫는 <code>::</code>가 없어 이 가중치가 프롬프트 끝까지 적용됩니다. 뒤에 오는 태그 전부가 ' + f.raw + '배를 받습니다.',
+          fixLabel:'끝에서 닫기',
+          apply: s => s.replace(/[\s,]*$/,'') + '::'
+        });
+      }
+      // A bare "::" with nothing open is the normal way to close NAI's implicit
+      // first group, so it is parsed and ignored rather than reported.
+    });
+
+    const seen = new Map();
+    tags.forEach(t => {
+      const typo = /^(artiat|atrist|arist|artsit|artist)\s*:/i.exec(t.text);
+
+      if(typo && typo[1].toLowerCase() !== 'artist'){
+        list.push({
+          sev:'error', start:t.start, end:t.end,
+          title:'오타 <code>' + esc(typo[1]) + ':</code>',
+          detail:'<code>artist:</code>의 오타로 보입니다. 이대로면 모델이 아티스트 태그로 인식하지 못합니다.',
+          fixLabel:'artist: 로',
+          apply: s => s.slice(0,t.start) + t.text.replace(/^[a-z]+\s*:/i,'artist:') + s.slice(t.end)
+        });
+      }
+
+      if(/^artist\s*:\s*artist\s*:/i.test(t.text)){
+        list.push({
+          sev:'error', start:t.start, end:t.end,
+          title:'<code>artist:</code> 접두어 중복',
+          detail:'접두어가 두 번 붙어 <code>' + esc(t.text) + '</code>가 됐습니다.',
+          fixLabel:'하나로',
+          apply: s => s.slice(0,t.start) + t.text.replace(/^artist\s*:\s*artist\s*:/i,'artist:') + s.slice(t.end)
+        });
+      }
+
+      // A colon inside the tag collides with SD's own (tag:weight) syntax
+      const body = t.text.replace(/^artist\s*:/i,'');
+      if(body.includes(':') && Math.abs(t.weight-1) > 0.001){
+        list.push({
+          sev:'error', start:t.start, end:t.end,
+          title:'콜론 + 가중치 충돌',
+          detail:'<code>(' + esc(t.text) + ':' + wstr(round2(Math.abs(t.weight))) + ')</code> 형태가 되는데, SD는 마지막 콜론만 가중치로 읽어 태그가 깨집니다. 콜론을 <code>_</code>로 바꾸거나 이 태그를 블록 밖으로 빼세요.',
+          fixLabel:'콜론 → _',
+          apply: s => {
+            const fixed = t.text.replace(/^(artist\s*:)?([\s\S]*)$/i, (_,p,r) => (p||'') + r.replace(/:/g,'_'));
+            return s.slice(0,t.start) + fixed + s.slice(t.end);
+          }
+        });
+      }
+
+      if(t.weight === 0){
+        list.push({
+          sev:'warn', start:t.start, end:t.end,
+          title:'가중치 0 — 결과에서 빠짐',
+          detail:'<code>' + esc(t.text) + '</code>는 가중치가 0이라 Positive/Negative 어느 쪽에도 들어가지 않습니다.',
+          fixLabel:null
+        });
+      }
+
+      if(t.weight > 2.5){
+        list.push({
+          sev:'warn', start:t.start, end:t.end,
+          title:'가중치 ' + round2(t.weight) + ' — 비정상적으로 큼',
+          detail:'중첩이 곱해졌거나 블록이 안 닫혀 값이 누적됐을 수 있습니다. SD에서 2를 넘기면 대개 그 태그만 튀어 이미지가 망가집니다.',
+          fixLabel:null
+        });
+      }
+
+      const k = t.text.toLowerCase();
+      if(seen.has(k)){
+        const first = seen.get(k);
+        list.push({
+          sev:'warn', start:t.start, end:t.end,
+          title:'중복 태그 <code>' + esc(t.text) + '</code>',
+          detail:'앞쪽 ' + (first.start+1) + '번째 글자에 가중치 ' + round2(first.weight) + '로 이미 있습니다. 여기는 ' + round2(t.weight) + '. 중복 제거가 켜져 있으면 앞의 것만 남습니다.',
+          fixLabel:'이 자리 삭제',
+          apply: s => {
+            let a = t.start, b = t.end;
+            if(s[b] === ',') b++;
+            else if(s[a-1] === ',') a--;
+            return s.slice(0,a) + s.slice(b);
+          }
+        });
+      } else seen.set(k, t);
+
+      // --- typo check against the Danbooru dictionary.
+      // A tag missing from the dictionary is NOT an error — it passes through
+      // untouched. Only a very close near-miss earns a suggestion.
+      if(checkable(t.text)){
+        const norm = normTag(t.text);
+        if(norm && !dictSet.has(norm)){
+          const near = nearestTag(norm);
+          if(near && near.dist > 0){
+            list.push({
+              sev:'warn', start:t.start, end:t.end,
+              title:'오타? <code>' + esc(t.text) + '</code> → <code>' + esc(near.tag) + '</code>',
+              detail:'사전에 없는 태그인데 <code>' + esc(near.tag) + '</code>와 ' + near.dist + '글자 차이입니다. 의도한 태그라면 그대로 둬도 됩니다 — 사전에 없어도 변환은 그대로 통과합니다.',
+              fixLabel:esc(near.tag) + ' 로',
+              autofix: near.dist === 1,   // distance-2 guesses need a human eye
+              apply: s => s.slice(0,t.start) + near.tag + s.slice(t.end)
+            });
+          }
+        }
+      }
+    });
+
+    const artistCount = tags.filter(t => /^artist\s*:/i.test(t.text)).length;
+    if(artistCount > 15){
+      list.push({
+        sev:'warn', start:-1, end:-1,
+        title:'아티스트 태그 ' + artistCount + '개',
+        detail:'15명을 넘으면 스타일이 서로 상쇄돼 오히려 특징 없는 그림이 나옵니다. 3~5명으로 줄이고 가중치 차이를 크게 주세요.',
+        fixLabel:null
+      });
+    }
+
+    list.sort((a,b) => (a.start<0) - (b.start<0) || a.start - b.start);
+    return list;
+  }
+
+  /* ================= formatting ================= */
+  function artistify(text, mode){
+    const m = /^artist\s*:\s*([\s\S]+)$/i.exec(text);
+    if(!m) return text;
+    if(mode === 'by') return 'by ' + m[1];
+    if(mode === 'strip') return m[1];
+    return text;
+  }
+  function fmtHtml(text, w){
+    w = round2(w);
+    return Math.abs(w-1) < 0.001 ? esc(text)
+      : '(' + esc(text) + '<span class="w">:' + wstr(w) + '</span>)';
+  }
+  function fmtPlain(text, w){
+    w = round2(w);
+    return Math.abs(w-1) < 0.001 ? text : '(' + text + ':' + wstr(w) + ')';
+  }
+  function splitTopLevel(raw){
+    const out=[]; let depth=0, cur='';
+    for(const ch of raw){
+      if(ch==='('||ch==='['||ch==='<') depth++;
+      else if(ch===')'||ch===']'||ch==='>') depth=Math.max(0,depth-1);
+      if(ch===','&&depth===0){ if(cur.trim()) out.push(cur.trim()); cur=''; }
+      else cur+=ch;
+    }
+    if(cur.trim()) out.push(cur.trim());
+    return out;
+  }
+
+  /* ================= highlight backdrop ================= */
+  function paintBackdrop(src){
+    const spans = issues
+      .map((x,idx) => ({...x, idx}))
+      .filter(x => x.start >= 0)
+      .sort((a,b) => a.start - b.start);
+
+    let html = '', cursor = 0;
+    spans.forEach(s => {
+      if(s.start < cursor) return;                  // skip overlapping marks
+      html += esc(src.slice(cursor, s.start));
+      html += '<mark class="e-' + s.sev + (s.idx === activeIssue ? ' e-active' : '') + '">'
+            + esc(src.slice(s.start, s.end)) + '</mark>';
+      cursor = s.end;
+    });
+    html += esc(src.slice(cursor));
+    backdrop.innerHTML = html + '\n';
+    backdrop.scrollTop = input.scrollTop;
+  }
+
+  /* ================= render ================= */
+  let posPlain = '', negPlain = '';
+
+  function render(){
+    const src = input.value;
+    $('inCount').textContent = src.length.toLocaleString() + '자';
+
+    const {tags, found} = parse(src, $('nestMode').value);
+    issues = src.trim() ? diagnose(src, tags, found) : [];
+    if(activeIssue >= issues.length) activeIssue = -1;
+
+    const useArtist  = $('optArtist').checked;
+    const artistMode = $('artistMode').value;
+    const dedupe     = $('optDedupe').checked;
+    const underscore = $('optUnderscore').checked;
+
+    let pos = [], neg = [];
+    tags.forEach(t => {
+      let text = t.text;
+      if(useArtist) text = artistify(text, artistMode);
+      if(underscore) text = text.replace(/ /g,'_');
+      if(t.weight < 0) neg.push({ text, weight: Math.min(1 + Math.abs(t.weight)*0.1, MAX_NEG) });
+      else if(t.weight !== 0) pos.push({ text, weight:t.weight });
+    });
+
+    const ownNeg = splitTopLevel($('negInput').value);
+    $('negInCount').textContent = ownNeg.length + '개';
+    const ownItems = ownNeg.map(text => ({ text, weight:1, verbatim:true }));
+    neg = $('optNegFirst').checked ? ownItems.concat(neg) : neg.concat(ownItems);
+
+    if(dedupe){
+      const a = new Set();
+      pos = pos.filter(t => { const k=t.text.toLowerCase(); if(a.has(k)) return false; a.add(k); return true; });
+      const b = new Set();
+      neg = neg.filter(t => { const k=t.text.toLowerCase(); if(b.has(k)) return false; b.add(k); return true; });
+    }
+
+    $('outPos').innerHTML = pos.map(t => fmtHtml(t.text,t.weight)).join(', ');
+    $('outNeg').innerHTML = neg.map(t => t.verbatim ? esc(t.text) : fmtHtml(t.text,t.weight)).join(', ');
+    posPlain = pos.map(t => fmtPlain(t.text,t.weight)).join(', ');
+    negPlain = neg.map(t => t.verbatim ? t.text : fmtPlain(t.text,t.weight)).join(', ');
+    $('posCount').textContent = pos.length + '개';
+    $('negCount').textContent = neg.length + '개';
+
+    const total = pos.length + neg.length;
+    const meter = $('meter');
+    if(!total){
+      meter.innerHTML = '<div class="m-empty">입력을 붙여넣으면 채널이 갈라집니다</div>';
+      $('meterNote').textContent = 'Positive / Negative 라우팅';
+    } else {
+      meter.innerHTML =
+        '<div class="m-pos" style="flex-grow:' + Math.max(pos.length,.001) + '">positive ' + pos.length + '</div>' +
+        (neg.length ? '<div class="m-neg" style="flex-grow:' + neg.length + '">negative ' + neg.length + '</div>' : '');
+      $('meterNote').textContent = '태그 ' + total + '개 라우팅 완료';
+    }
+
+    paintBackdrop(src);
+    renderIssues(src);
+  }
+
+  function renderIssues(src){
+    const box = $('issues');
+    const errs  = issues.filter(x => x.sev === 'error').length;
+    const warns = issues.filter(x => x.sev === 'warn').length;
+    const fixable = issues.filter(x => x.apply).length;
+
+    $('tally').innerHTML = !src.trim() ? '' :
+      (errs  ? '<span class="t-err">오류 ' + errs + '</span>' : '') +
+      (warns ? '<span class="t-warn">경고 ' + warns + '</span>' : '') +
+      (!errs && !warns ? '<span class="t-ok">문제 없음</span>' : '');
+
+    $('fixAllBtn').disabled = fixable === 0;
+
+    if(!src.trim()){ box.innerHTML = '<div class="idle">입력 대기 중</div>'; return; }
+    if(!issues.length){ box.innerHTML = '<div class="clean">문법 문제가 없습니다. 바로 복사해 쓰세요.</div>'; return; }
+
+    box.innerHTML = issues.map((x,i) =>
+      '<div class="issue">' +
+        '<div class="sev ' + x.sev + '"></div>' +
+        '<div class="issue-body">' +
+          '<p class="issue-title">' + x.title +
+            (x.start >= 0 ? ' <span class="at">— ' + (x.start+1) + '번째 글자</span>' : '') +
+          '</p>' +
+          '<p class="issue-detail">' + x.detail + '</p>' +
+        '</div>' +
+        '<div class="issue-acts">' +
+          (x.start >= 0 ? '<button type="button" data-show="' + i + '">보기</button>' : '') +
+          (x.apply ? '<button type="button" class="primary" data-fix="' + i + '">' + x.fixLabel + '</button>' : '') +
+        '</div>' +
+      '</div>'
+    ).join('');
+
+    box.querySelectorAll('[data-show]').forEach(b => {
+      b.onclick = () => {
+        const i = +b.dataset.show, x = issues[i];
+        activeIssue = i;
+        input.focus();
+        input.setSelectionRange(x.start, x.end);
+        paintBackdrop(input.value);
+      };
+    });
+    box.querySelectorAll('[data-fix]').forEach(b => {
+      b.onclick = () => applyFix(issues[+b.dataset.fix]);
+    });
+  }
+
+  function pushHistory(){
+    history.push(input.value);
+    if(history.length > 50) history.shift();
+    $('undoBtn').disabled = false;
+  }
+
+  function applyFix(issue){
+    if(!issue || !issue.apply) return;
+    pushHistory();
+    input.value = issue.apply(input.value);
+    activeIssue = -1;
+    render();
+  }
+
+  // Each fix shifts every later position, so re-parse between passes.
+  function tidy(s){
+    return s
+      .replace(/,\s*(?=,)/g, '')        // collapse empty slots: "a,,b" -> "a,b"
+      .replace(/,\s*::/g, '::')         // "a, ::" -> "a::"
+      .replace(/::\s*,\s*::/g, '::')    // "::,::" -> "::"
+      .replace(/^\s*,\s*/, '')          // leading comma
+      .replace(/[\s,]+$/,'')            // trailing comma/space
+      .replace(/[ \t]{2,}/g, ' ');      // runs of spaces
+  }
+
+  $('fixAllBtn').onclick = () => {
+    pushHistory();
+    const mode = $('nestMode').value;
+    for(let pass = 0; pass < 200; pass++){
+      const {tags, found} = parse(input.value, mode);
+      const next = diagnose(input.value, tags, found).find(x => x.apply && x.autofix !== false);
+      if(!next) break;
+      const before = input.value;
+      input.value = next.apply(before);
+      if(input.value === before) break;   // guard against a no-op loop
+    }
+    input.value = tidy(input.value);
+    activeIssue = -1;
+    render();
+  };
+
+  $('undoBtn').onclick = () => {
+    if(!history.length) return;
+    input.value = history.pop();
+    $('undoBtn').disabled = history.length === 0;
+    activeIssue = -1;
+    render();
+  };
+
+  /* ================= copy ================= */
+  function copy(btn, text){
+    if(!text) return;
+    const done = () => {
+      const old = btn.textContent;
+      btn.textContent = '복사됨';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = old; btn.classList.remove('copied'); }, 1400);
+    };
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); done(); }catch(e){}
+      document.body.removeChild(ta);
+    };
+    if(navigator.clipboard && window.isSecureContext)
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    else fallback();
+  }
+
+  $('copyPos').onclick = e => copy(e.target, posPlain);
+  $('copyNeg').onclick = e => copy(e.target, negPlain);
+  $('clearBtn').onclick    = () => { pushHistory(); input.value=''; activeIssue=-1; render(); input.focus(); };
+  $('clearNegBtn').onclick = () => { $('negInput').value=''; render(); $('negInput').focus(); };
+
+  input.addEventListener('scroll', () => { backdrop.scrollTop = input.scrollTop; });
+  input.addEventListener('input', () => { activeIssue = -1; });
+
+  /* ================= custom dictionary ================= */
+  function refreshDictCount(){
+    $('dictCount').textContent = '사전 ' + dictSet.size.toLocaleString() + '개' +
+      (customDictCount ? ' (+' + customDictCount.toLocaleString() + ')' : '');
+  }
+  refreshDictCount();
+
+  $('dictBtn').onclick = e => { e.preventDefault(); $('dictFile').click(); };
+  $('dictFile').addEventListener('change', () => {
+    const f = $('dictFile').files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const before = dictSet.size;
+      // Accept one-tag-per-line, comma-separated, or "tag<TAB>count" exports.
+      addDict(String(reader.result).replace(/\t\d+$/gm,''));
+      customDictCount += dictSet.size - before;
+      refreshDictCount();
+      render();                        // re-check with the wider dictionary
+      $('dictFile').value = '';
+    };
+    reader.readAsText(f);
+  });
+
+  ['input','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optNegFirst'].forEach(id => {
+    const el = $(id);
+    el.addEventListener(el.tagName === 'TEXTAREA' ? 'input' : 'change', render);
+  });
+
+  /* ================= keyboard ================= */
+  document.addEventListener('keydown', e => {
+    if(!(e.ctrlKey || e.metaKey)) return;
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      e.shiftKey ? copy($('copyNeg'), negPlain) : copy($('copyPos'), posPlain);
+    }
+    // Only hijack undo when it's our own fix history; otherwise let the
+    // textarea handle its native undo stack.
+    if(e.key.toLowerCase() === 'z' && !e.shiftKey && history.length &&
+       document.activeElement !== input && document.activeElement !== $('negInput')){
+      e.preventDefault();
+      $('undoBtn').click();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
