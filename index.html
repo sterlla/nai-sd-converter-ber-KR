@@ -230,11 +230,7 @@
             </select>
             <label class="opt"><input type="checkbox" id="optNegFirst" checked> 내 네거티브를 앞에</label>
           </div>
-          <div class="controls" style="border-top:1px solid var(--rule)">
-            <input type="file" id="dictFile" accept=".txt,.csv,.tsv,text/plain" style="display:none">
-            <button id="dictBtn" type="button">태그 사전 추가 (txt/csv)</button>
-            <span class="count" id="dictCount"></span>
-          </div>
+          <div class="nl-note">오타 검사 사전은 <b>자연어 → 태그</b> 탭에서 데이터셋을 불러오면 함께 확장됩니다. <span class="count" id="dictCount"></span></div>
         </details>
       </div>
 
@@ -331,6 +327,25 @@
           </div>
           <div class="nl-note" id="nlNote"></div>
         </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">태그 사전</h2>
+            <span class="count" id="dictCount"></span>
+          </div>
+          <div class="nl-note" id="dsStatus" style="border-top:0"></div>
+          <div class="controls">
+            <input type="file" id="dsFile" accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain" style="display:none">
+            <button id="dsBtn" type="button" class="primary">데이터셋 불러오기</button>
+            <button id="dsClear" type="button" disabled>초기화</button>
+            <label class="opt"><input type="checkbox" id="dsPersist" checked> 브라우저에 저장</label>
+            <label class="opt"><input type="checkbox" id="dsSkipArtist" checked> 작가 태그는 한국어 매칭에서 제외</label>
+          </div>
+          <div class="nl-note" style="border-top:1px solid var(--rule)">
+            <b>지원 형식</b> · <code>tags.json</code> (english_name / korean_name / keyword) · <code>autocomplete.csv</code> · 한 줄에 태그 하나인 txt<br>
+            작가 태그는 <code>아티스트</code>·<code>작가</code> 같은 키워드를 수만 개가 공유해서 한국어 매칭을 망칩니다. 체크를 켜두면 영어 오타 검사에만 쓰입니다.
+          </div>
+        </section>
       </div>
 
       <div class="col">
@@ -384,7 +399,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v2.0 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v2.1 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -416,7 +431,7 @@ portrait,upper body,lower body,full body,cowboy shot,close-up,wide shot,very wid
 short hair,medium hair,long hair,very long hair,absurdly long hair,bald,bob cut,pixie cut,hime cut,ponytail,twintails,short twintails,low twintails,twin braids,side ponytail,high ponytail,low ponytail,folded ponytail,braid,braided ponytail,french braid,crown braid,single braid,side braid,braided bangs,hair bun,double bun,single hair bun,cone hair bun,topknot,ahoge,huge ahoge,antenna hair,bangs,blunt bangs,swept bangs,parted bangs,crossed bangs,asymmetrical bangs,hair between eyes,sidelocks,hair over one eye,hair over eyes,messy hair,spiked hair,wavy hair,curly hair,straight hair,drill hair,twin drills,hair intakes,hair flaps,flipped hair,hair pulled back,slicked back hair,undercut,streaked hair,multicolored hair,two-tone hair,gradient hair,colored inner hair,colored tips,black hair,brown hair,light brown hair,blonde hair,platinum blonde hair,white hair,grey hair,silver hair,red hair,orange hair,pink hair,purple hair,light purple hair,blue hair,light blue hair,dark blue hair,aqua hair,green hair,dark green hair,wet hair,shiny hair,floating hair,hair spread out,
 blue eyes,red eyes,green eyes,yellow eyes,orange eyes,purple eyes,pink eyes,brown eyes,black eyes,grey eyes,aqua eyes,amber eyes,golden eyes,heterochromia,multicolored eyes,gradient eyes,glowing eyes,sparkling eyes,empty eyes,solid circle eyes,half-closed eyes,closed eyes,one eye closed,wink,squinting,wide-eyed,glaring,staring,crazy eyes,sanpaku,tsurime,tareme,jitome,bags under eyes,eyelashes,long eyelashes,colored eyelashes,thick eyebrows,short eyebrows,v-shaped eyebrows,eyebrows visible through hair,mole under eye,mole under mouth,eyeliner,eyeshadow,mascara,makeup,lipstick,red lips,undetailed eyes,bad eyes,bad pupils,cross-eyed,glazed eye,bad glabella,
 smile,grin,evil grin,smirk,light smile,gentle smile,open mouth,closed mouth,parted lips,lips,thick lips,tongue,tongue out,teeth,upper teeth only,sharp teeth,fang,fangs,skin fang,clenched teeth,frown,pout,angry,annoyed,embarrassed,blush,nervous,flustered,expressionless,serious,sad,crying,tears,tearing up,happy,laughing,surprised,shocked,scared,worried,confused,thinking,smug,sleepy,tired,bored,drunk,drooling,sweat,sweatdrop,heavy breathing,sigh,shaded face,turn pale,trembling,notice lines,spoken ellipsis,spoken question mark,spoken exclamation mark,
-shirt,t-shirt,white shirt,black shirt,red shirt,blue shirt,collared shirt,dress shirt,off-shoulder shirt,sleeveless shirt,striped shirt,plaid shirt,print shirt,crop top,tank top,camisole,blouse,sweater,turtleneck,ribbed sweater,sweater vest,cardigan,hoodie,jacket,black jacket,white jacket,red jacket,blue jacket,denim jacket,leather jacket,bomber jacket,track jacket,letterman jacket,blazer,open jacket,jacket on shoulders,coat,trench coat,winter coat,duffel coat,off-shoulder coat,fur coat,fur trim,fur collar,vest,waistcoat,suit,business suit,tuxedo,formal,uniform,school uniform,serafuku,sailor collar,gym uniform,military uniform,police uniform,maid,maid headdress,maid apron,apron,dress,sundress,white dress,black dress,red dress,frilled dress,lace-trimmed dress,wedding dress,china dress,evening gown,kimono,yukata,obi,hakama,miko,skirt,pleated skirt,miniskirt,microskirt,long skirt,pencil skirt,plaid skirt,frilled skirt,shorts,short shorts,denim shorts,dolphin shorts,gym shorts,pants,jeans,denim,black pants,white pants,cargo pants,leggings,yoga pants,overalls,jumpsuit,bodysuit,leotard,swimsuit,one-piece swimsuit,bikini,school swimsuit,competition swimsuit,sarong,pajamas,nightgown,robe,bathrobe,plain clothes,casual,alternate costume,official alternate costume,
+shirt,t-shirt,white shirt,black shirt,red shirt,blue shirt,collared shirt,dress shirt,off-shoulder shirt,sleeveless shirt,striped shirt,plaid shirt,print shirt,crop top,tank top,camisole,blouse,sweater,turtleneck,ribbed sweater,sweater vest,cardigan,hoodie,jacket,black jacket,white jacket,red jacket,blue jacket,denim jacket,leather jacket,bomber jacket,track jacket,letterman jacket,blazer,open jacket,jacket on shoulders,coat,trench coat,winter coat,duffel coat,off-shoulder coat,fur coat,fur trim,fur collar,vest,waistcoat,suit,business suit,tuxedo,formal,uniform,school uniform,serafuku,sailor collar,gym uniform,military uniform,police uniform,maid,maid headdress,maid apron,apron,nun,habit,priest,pope,cassock,wimple,veil,church,cathedral,chapel,stained glass,cross,cross necklace,rosary,prayer,altar,pew,candlestand,dress,sundress,white dress,black dress,red dress,frilled dress,lace-trimmed dress,wedding dress,china dress,evening gown,kimono,yukata,obi,hakama,miko,skirt,pleated skirt,miniskirt,microskirt,long skirt,pencil skirt,plaid skirt,frilled skirt,shorts,short shorts,denim shorts,dolphin shorts,gym shorts,pants,jeans,denim,black pants,white pants,cargo pants,leggings,yoga pants,overalls,jumpsuit,bodysuit,leotard,swimsuit,one-piece swimsuit,bikini,school swimsuit,competition swimsuit,sarong,pajamas,nightgown,robe,bathrobe,plain clothes,casual,alternate costume,official alternate costume,
 scarf,plaid scarf,gloves,fingerless gloves,elbow gloves,black gloves,white gloves,mittens,socks,white socks,black socks,kneehighs,thighhighs,over-kneehighs,pantyhose,black pantyhose,white pantyhose,tights,fishnets,garter straps,zettai ryouiki,shoes,boots,knee boots,thigh boots,ankle boots,combat boots,high heels,sandals,sneakers,loafers,mary janes,geta,slippers,barefoot,bare legs,bare arms,bare shoulders,off shoulder,single bare shoulder,collarbone,midriff,navel,stomach,cleavage,bra,underwear,sports bra,strap slip,clothes writing,graphic tee,character print,emblem,patch,clothing cutout,cleavage cutout,shoulder cutout,back cutout,zipper,buttons,unbuttoned,open clothes,open shirt,partially unbuttoned,untucked shirt,sleeves rolled up,sleeves past wrists,long sleeves,short sleeves,sleeveless,wide sleeves,detached sleeves,puffy sleeves,puffy short sleeves,
 hat,cap,baseball cap,beanie,beret,sun hat,straw hat,witch hat,top hat,mini hat,hood,hood up,hood down,hair ornament,hairclip,hairpin,hair ribbon,hair bow,x hair ornament,star hair ornament,heart hair ornament,hair flower,hairband,headband,headdress,ribbon,bow,bowtie,red bowtie,necktie,black necktie,red necktie,loose necktie,choker,black choker,necklace,pendant,jewelry,earrings,hoop earrings,stud earrings,single earring,piercing,ear piercing,lip piercing,eyebrow piercing,bracelet,bangle,ring,watch,wristwatch,glasses,semi-rimless eyewear,under-rim eyewear,rimless eyewear,round eyewear,black-framed eyewear,red-framed eyewear,sunglasses,aviator sunglasses,tinted eyewear,eyewear on head,lowered eyewear,adjusting eyewear,goggles,goggles on head,mask,mouth mask,surgical mask,mask pull,headphones,headphones around neck,earbuds,bag,handbag,shoulder bag,backpack,school bag,belt,black belt,buckle,armband,wristband,sweatband,gauntlets,armor,shoulder armor,pauldrons,breastplate,cape,cloak,wings,angel wings,demon wings,bat wings,feathered wings,halo,horns,demon horns,animal ears,cat ears,dog ears,fox ears,rabbit ears,wolf ears,mouse ears,bear ears,animal ear fluff,tail,cat tail,dog tail,fox tail,wolf tail,demon tail,elf,pointy ears,dark elf,
 tan,tanlines,dark skin,dark-skinned female,dark-skinned male,pale skin,very dark skin,shiny skin,sweaty,wet,freckles,mole,beauty mark,scar,scar on face,scar across eye,scar on arm,scar on chest,scar on neck,scar on cheek,scar on shoulder,scar on body,burn scar,bandaid,bandaid on face,bandaid on nose,bandages,abs,muscular,muscular female,muscular male,toned,toned female,athletic,slim,skinny,curvy,plump,petite,tall,tall female,height difference,wide hips,thick thighs,thighs,thigh gap,legs,long legs,flat chest,small breasts,medium breasts,large breasts,huge breasts,armpits,back,shoulder blades,nape,jawline,tomboy,gyaru,ganguro,kogal,mature female,old woman,young,child,aged down,aged up,
@@ -427,17 +442,28 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
 
   const dictSet = new Set();
   const dictDisplay = new Map();
+  const dictByLen = new Map();   // length -> [normalized tags]; keeps typo lookup fast at 50k entries
   const normTag = s => s.toLowerCase().replace(/\\([()])/g,'$1').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   function addDict(raw){
-    raw.split(/[,\n\t]+/).forEach(t => {
+    // "# 분류" 주석줄과 "태그<TAB>12345" 형태의 사용횟수는 무시한다.
+    const cleaned = raw
+      .split(/\r?\n/)
+      .filter(line => !/^\s*[#/]/.test(line))
+      .join('\n')
+      .replace(/\t\d+\s*$/gm, '');
+    cleaned.split(/[,\n\t]+/).forEach(t => {
       const disp = t.trim();
       if(!disp) return;
       const n = normTag(disp);
-      if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp.replace(/\\([()])/g,'$1')); }
+      if(n && !dictSet.has(n)){
+        dictSet.add(n);
+        dictDisplay.set(n, disp.replace(/\\([()])/g,'$1'));
+        if(!dictByLen.has(n.length)) dictByLen.set(n.length, []);
+        dictByLen.get(n.length).push(n);
+      }
     });
   }
   addDict(DICT_BASE);
-  let customDictCount = 0;
 
   function osa(a, b, max){
     if(Math.abs(a.length - b.length) > max) return max + 1;
@@ -463,9 +489,15 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   function nearestTag(norm){
     const max = norm.length <= 6 ? 1 : 2;
     let best = null, bestD = max + 1;
-    for(const cand of dictSet){
-      const d = osa(norm, cand, Math.min(bestD - 1, max));
-      if(d < bestD){ bestD = d; best = cand; if(bestD === 0) break; }
+    // Only lengths within `max` of the input can be within edit distance `max`,
+    // so scan those buckets instead of the whole dictionary.
+    for(let L = norm.length - max; L <= norm.length + max; L++){
+      const bucket = dictByLen.get(L);
+      if(!bucket) continue;
+      for(let i = 0; i < bucket.length; i++){
+        const d = osa(norm, bucket[i], Math.min(bestD - 1, max));
+        if(d < bestD){ bestD = d; best = bucket[i]; if(bestD === 0) return null; }
+      }
     }
     return best ? { tag: dictDisplay.get(best), dist: bestD } : null;
   }
@@ -835,26 +867,6 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   input.addEventListener('scroll', () => { backdrop.scrollTop = input.scrollTop; });
   input.addEventListener('input', () => { activeIssue = -1; });
 
-  function refreshDictCount(){
-    $('dictCount').textContent = '사전 ' + dictSet.size.toLocaleString() + '개' +
-      (customDictCount ? ' (+' + customDictCount.toLocaleString() + ')' : '');
-  }
-  refreshDictCount();
-  $('dictBtn').onclick = e => { e.preventDefault(); $('dictFile').click(); };
-  $('dictFile').addEventListener('change', () => {
-    const f = $('dictFile').files[0];
-    if(!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const before = dictSet.size;
-      addDict(String(reader.result).replace(/\t\d+$/gm,''));
-      customDictCount += dictSet.size - before;
-      refreshDictCount();
-      render();
-      $('dictFile').value = '';
-    };
-    reader.readAsText(f);
-  });
   ['input','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optNegFirst'].forEach(id => {
     const el = $(id);
     el.addEventListener(el.tagName === 'TEXTAREA' ? 'input' : 'change', render);
@@ -1118,7 +1130,34 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     // 스타일
     ['흑백','monochrome, greyscale',1],['모노크롬','monochrome',1],['스케치','sketch',1],
     ['수채화','watercolor',1],['픽셀','pixel art',1],['치비','chibi',1],
+    // 구어체 보정 — 데이터셋은 명사형 위주라 서술형 표현을 따로 잡아줍니다
+    ['키가 크고','tall',1],['키가 큰','tall',1],['키가 커','tall',1],['장신','tall',1],
+    ['키가 작','petite',1],['키 작은','petite',1],
+    ['가슴이 큰','large breasts',1],['가슴이 크','large breasts',1],['가슴 큰','large breasts',1],
+    ['가슴이 작','small breasts',1],['가슴 작','small breasts',1],
+    ['활짝 웃음','grin',1.1],['활짝 웃는','grin',1.1],['씩 웃는','grin',1.1],['씩 웃음','grin',1.1],
+    ['웃고 있','smile',1],['미소 짓','smile',1],
+    ['머리가 긴','long hair',1],['머리가 짧','short hair',1],['머리 긴','long hair',1],['머리 짧','short hair',1],
+    ['피부가 어두','dark skin',1],['피부가 하얀','pale skin',1],['피부가 흰','pale skin',1],
+    ['눈이 큰','wide-eyed',1],['말랐','slim',1],['날씬','slim',1],
   ].sort((a,b) => b[0].length - a[0].length);
+
+  /* ---- Korean phrase lookup -------------------------------------------
+     Built-in entries win over imported ones (they carry hand-tuned
+     weights); imported data fills in the vocabulary the hand list lacks. */
+  const koMap = new Map();   // phrase -> {tags, w, src}
+  let koMaxLen = 2;
+  function koAdd(phrase, tags, w, src){
+    const p = phrase.trim();
+    if(p.length < 2) return;                 // 1-char keys match far too much
+    if(koMap.has(p) && koMap.get(p).src === 'builtin') return;
+    if(koMap.has(p) && src === 'import') return;
+    koMap.set(p, { tags, w, src });
+    if(p.length > koMaxLen) koMaxLen = Math.min(p.length, 28);
+  }
+  KO.forEach(([k, t, w]) => koAdd(k, t, w, 'builtin'));
+  const builtinKoCount = koMap.size;
+  let importedKoCount = 0, importedTagCount = 0, importedLabel = '';
 
   const BOOST = /(매우|아주|엄청|진짜|완전|강하게|잔뜩)\s*$/;
   const SOFT  = /(살짝|약간|조금|은은)\s*$/;
@@ -1129,16 +1168,22 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   function analyzeNL(text){
     const claimed = new Array(text.length).fill(false);
     const hits = [];
-    for(const [key, tags, w] of KO){
-      let idx = 0;
-      while((idx = text.indexOf(key, idx)) !== -1){
+    // Longest-match-first sliding window. With tens of thousands of keys a
+    // per-key indexOf scan is far too slow, so we probe the map instead.
+    for(let i = 0; i < text.length; i++){
+      if(claimed[i]) continue;
+      const maxL = Math.min(koMaxLen, text.length - i);
+      for(let L = maxL; L >= 2; L--){
+        const slice = text.substr(i, L);
+        const entry = koMap.get(slice);
+        if(!entry) continue;
         let free = true;
-        for(let k = idx; k < idx + key.length; k++) if(claimed[k]){ free = false; break; }
-        if(free){
-          for(let k = idx; k < idx + key.length; k++) claimed[k] = true;
-          hits.push({ start: idx, end: idx + key.length, key, tags, w });
-        }
-        idx += key.length;
+        for(let k = i; k < i + L; k++) if(claimed[k]){ free = false; break; }
+        if(!free) break;
+        for(let k = i; k < i + L; k++) claimed[k] = true;
+        hits.push({ start:i, end:i+L, key:slice, tags:entry.tags, w:entry.w });
+        i += L - 1;
+        break;
       }
     }
     hits.sort((a,b) => a.start - b.start);
@@ -1226,6 +1271,274 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     $('nlInput').value = '선글라스를 낮게 걸쳐쓴 톰보이 여자. 짧은 머리, 태닝된 피부에 청반바지. 담배 물고 씩 웃으면서 옆모습으로 걷는 중. 흰 배경, 흐린 배경은 빼고';
     render3();
   };
+
+  /* ======================================================
+     DATASET IMPORT  (tags.json / autocomplete.csv / plain list)
+  ====================================================== */
+  // Artist/source tags share generic keywords ("아티스트", "작가") across
+  // tens of thousands of rows, so they are useless for Korean matching —
+  // they still feed the English typo dictionary.
+  const KO_SKIP_CATEGORIES = new Set(['Source and Artist']);
+  const KO_STOPWORDS = new Set(['아티스트','작가','일러스트레이터','캐릭터','만화가','필명','주인공','그림','태그','시리즈','게임','애니메이션','원작',
+    '장면','모습','느낌','분위기','상황','이미지','사진','일러스트','작품','스타일','묘사','표현','모양','형태','부분','정도','상태','종류','전체','사람','인물','여러','하나','모두']);
+
+  function parseCSVLine(line){
+    const out = []; let cur = '', q = false;
+    for(let i = 0; i < line.length; i++){
+      const c = line[i];
+      if(q){
+        if(c === '"'){ if(line[i+1] === '"'){ cur += '"'; i++; } else q = false; }
+        else cur += c;
+      } else {
+        if(c === '"') q = true;
+        else if(c === ','){ out.push(cur); cur = ''; }
+        else cur += c;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // Returns {rows:[{en, ko:[..], cat, count}], kind}
+  function parseDataset(raw){
+    const txt = raw.replace(/^\uFEFF/, '').trim();
+
+    // --- JSON array of tag objects
+    if(txt.startsWith('[') || txt.startsWith('{')){
+      let data;
+      try{ data = JSON.parse(txt); }catch(e){ return { rows:[], kind:'error', error:'JSON을 읽지 못했습니다: ' + e.message }; }
+      if(!Array.isArray(data)) data = [data];
+      // Compact production format: [english_name, korean_name, keyword, major_categories, count]
+      // Object arrays remain supported for manual import/backward compatibility.
+      const rows = data.map(o => {
+        if(Array.isArray(o)){
+          const en = String(o[0] || '').trim();
+          if(!en) return null;
+          const ko = [];
+          if(o[1]) ko.push(String(o[1]));
+          if(o[2]) String(o[2]).split(',').forEach(k => ko.push(k));
+          return { en, ko: ko.map(s => s.trim()).filter(Boolean), cat: String(o[3] || ''), count: Number(o[4] || 0) };
+        }
+        const en = String(o.english_name || o.name || o.tag || o.en || '').trim();
+        if(!en) return null;
+        const ko = [];
+        if(o.korean_name) ko.push(String(o.korean_name));
+        if(o.keyword) String(o.keyword).split(',').forEach(k => ko.push(k));
+        if(o.ko) ko.push(String(o.ko));
+        return {
+          en,
+          ko: ko.map(s => s.trim()).filter(Boolean),
+          cat: String(o.major_categories || o.category || ''),
+          count: Number(o.count || 0)
+        };
+      }).filter(Boolean);
+      return { rows, kind:'json' };
+    }
+
+    // --- CSV: tag,categoryNum,count,"... / 키워드: a, b, c"
+    const lines = txt.split(/\r?\n/);
+    const looksCsv = lines.some(l => /,/.test(l));
+    const rows = [];
+    lines.forEach(line => {
+      if(!line.trim()) return;
+      if(looksCsv && /,/.test(line)){
+        const f = parseCSVLine(line);
+        const en = (f[0] || '').trim();
+        if(!en) return;
+        const count = Number(String(f[2] || '').replace(/[^\d]/g,'')) || 0;
+        const desc = f.slice(3).join(',');
+        const ko = [];
+        const kw = /키워드\s*:\s*([^"]*)$/.exec(desc);
+        if(kw) kw[1].split(',').forEach(k => { const s = k.trim(); if(s) ko.push(s); });
+        const nm = /\]\s*([^:]{1,24}):/.exec(desc);        // "[분류] 한국어명: 설명"
+        if(nm) ko.unshift(nm[1].trim());
+        rows.push({ en, ko, cat:'', count });
+      } else {
+        const en = line.replace(/\t.*$/,'').trim();
+        if(en) rows.push({ en, ko:[], cat:'', count:0 });
+      }
+    });
+    return { rows, kind: looksCsv ? 'csv' : 'list' };
+  }
+
+  function applyDataset(rows, opts){
+    const skipKoCats = opts && opts.skipArtistKo !== false;
+    let addedTags = 0, addedKo = 0;
+    // Highest-count tags first so the best tag wins a contested phrase.
+    const sorted = rows.slice().sort((a,b) => (b.count||0) - (a.count||0));
+    sorted.forEach(r => {
+      const disp = r.en.replace(/_/g,' ').trim();
+      const n = normTag(disp);
+      if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp); addedTags++; }
+      if(skipKoCats && KO_SKIP_CATEGORIES.has(r.cat)) return;
+      r.ko.forEach(k => {
+        const p = k.trim();
+        if(p.length < 2 || KO_STOPWORDS.has(p)) return;
+        const before = koMap.size;
+        koAdd(p, disp, 1, 'import');
+        if(koMap.size > before) addedKo++;
+      });
+    });
+    importedTagCount += addedTags;
+    importedKoCount  += addedKo;
+    return { addedTags, addedKo };
+  }
+
+
+  // Non-blocking variant used by the built-in dataset. Sorting once preserves
+  // the existing highest-count-wins behavior; injection is chunked so a 37k
+  // dataset does not monopolize the main thread.
+  async function applyDatasetAsync(rows, opts){
+    const skipKoCats = opts && opts.skipArtistKo !== false;
+    let addedTags = 0, addedKo = 0;
+    const sorted = rows.slice().sort((a,b) => (b.count||0) - (a.count||0));
+    const CHUNK = 700;
+    for(let start = 0; start < sorted.length; start += CHUNK){
+      const end = Math.min(start + CHUNK, sorted.length);
+      for(let i = start; i < end; i++){
+        const r = sorted[i];
+        const disp = r.en.replace(/_/g,' ').trim();
+        const n = normTag(disp);
+        if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp); addedTags++; }
+        if(skipKoCats && KO_SKIP_CATEGORIES.has(r.cat)) continue;
+        r.ko.forEach(k => {
+          const p = k.trim();
+          if(p.length < 2 || KO_STOPWORDS.has(p)) return;
+          const before = koMap.size;
+          koAdd(p, disp, 1, 'import');
+          if(koMap.size > before) addedKo++;
+        });
+      }
+      if(end < sorted.length) await new Promise(r => setTimeout(r, 0));
+    }
+    importedTagCount += addedTags;
+    importedKoCount += addedKo;
+    return { addedTags, addedKo };
+  }
+
+  /* ---- persistence (IndexedDB; silently skipped where unavailable) ---- */
+  const DB_NAME = 'promptToolbox', STORE = 'dict';
+  function idb(){
+    return new Promise((res, rej) => {
+      if(!('indexedDB' in window)) return rej(new Error('no idb'));
+      const rq = indexedDB.open(DB_NAME, 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore(STORE);
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function saveDict(payload){
+    try{
+      const db = await idb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(payload, 'dataset');
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+      return true;
+    }catch(e){ return false; }
+  }
+  async function loadDict(){
+    try{
+      const db = await idb();
+      return await new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const rq = tx.objectStore(STORE).get('dataset');
+        rq.onsuccess = () => res(rq.result || null);
+        rq.onerror = () => rej(rq.error);
+      });
+    }catch(e){ return null; }
+  }
+  async function clearDict(){
+    try{
+      const db = await idb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete('dataset');
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function dictStatus(){
+    const parts = ['내장 ' + builtinKoCount.toLocaleString() + '개'];
+    if(importedKoCount)  parts.push('한국어 +' + importedKoCount.toLocaleString());
+    if(importedTagCount) parts.push('태그 +' + importedTagCount.toLocaleString());
+    return parts.join(' · ');
+  }
+  function refreshDictUI(){
+    const s = dictStatus();
+    $('dictCount').textContent = '사전 ' + dictSet.size.toLocaleString() + '개';
+    $('dsStatus').innerHTML = importedKoCount || importedTagCount
+      ? '<b style="color:var(--neg)">불러옴</b> ' + esc(importedLabel) + ' — ' + esc(s)
+      : '내장 사전만 사용 중 — ' + esc(s) + '. 아래에서 데이터셋을 불러오면 인식 범위가 크게 넓어집니다.';
+    $('dsClear').disabled = !(importedKoCount || importedTagCount);
+  }
+
+  async function ingest(text, label, persist){
+    $('dsStatus').innerHTML = '<b style="color:var(--pos)">읽는 중…</b>';
+    await new Promise(r => setTimeout(r, 10));
+    const { rows, kind, error } = parseDataset(text);
+    if(error){ $('dsStatus').innerHTML = '<b style="color:var(--err)">' + esc(error) + '</b>'; return; }
+    if(!rows.length){ $('dsStatus').innerHTML = '<b style="color:var(--err)">태그를 하나도 찾지 못했습니다.</b>'; return; }
+    const { addedTags, addedKo } = applyDataset(rows, { skipArtistKo: $('dsSkipArtist').checked });
+    importedLabel = label + ' (' + kind + ', ' + rows.length.toLocaleString() + '행)';
+    refreshDictUI();
+    render(); render3();
+    if(persist){
+      const ok = await saveDict({ text, label, skipArtist: $('dsSkipArtist').checked, at: Date.now() });
+      if(!ok) $('dsStatus').innerHTML += ' <span style="color:var(--warn)">· 브라우저 저장은 실패했습니다 (다음에 다시 불러오세요)</span>';
+    }
+  }
+
+  $('dsFile').addEventListener('change', () => {
+    const f = $('dsFile').files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { ingest(String(reader.result), f.name, $('dsPersist').checked); $('dsFile').value = ''; };
+    reader.onerror = () => { $('dsStatus').innerHTML = '<b style="color:var(--err)">파일을 읽지 못했습니다.</b>'; };
+    reader.readAsText(f);
+  });
+  $('dsBtn').onclick = e => { e.preventDefault(); $('dsFile').click(); };
+  $('dsClear').onclick = async () => {
+    await clearDict();
+    location.reload();
+  };
+
+  async function loadBuiltInDataset(){
+    try{
+      // Relative URL is intentionally used so GitHub Pages project subpaths work.
+      const res = await fetch('./data/tags.min.json', { cache:'force-cache' });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const { rows, kind, error } = parseDataset(text);
+      if(error || !rows.length) throw new Error(error || 'empty dataset');
+      $('dsStatus').innerHTML = '<b style="color:var(--pos)">기본 전체 사전 로딩 중…</b> ' + rows.length.toLocaleString() + '행';
+      await applyDatasetAsync(rows, { skipArtistKo: $('dsSkipArtist').checked });
+      importedLabel = '기본 전체 사전 (' + kind + ', ' + rows.length.toLocaleString() + '행)';
+      refreshDictUI();
+      render(); render3();
+      return true;
+    }catch(e){
+      // Quiet fallback: the built-in hand dictionary remains fully usable.
+      refreshDictUI();
+      return false;
+    }
+  }
+
+  // Prefer an explicitly saved manual dataset for offline/local workflows.
+  // Otherwise load the bundled dataset automatically for every normal visitor.
+  (async () => {
+    const saved = await loadDict();
+    if(saved && saved.text){
+      $('dsSkipArtist').checked = saved.skipArtist !== false;
+      await ingest(saved.text, saved.label || '저장된 사전', false);
+      return;
+    }
+    refreshDictUI();
+    loadBuiltInDataset(); // deliberately not awaited: first paint stays unblocked
+  })();
 
   /* ======================================================
      keyboard
