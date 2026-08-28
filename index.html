@@ -341,6 +341,21 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2 class="panel-title pos">작가 · 시리즈 (선택)</h2>
+            <span class="count" id="artCount">0개</span>
+          </div>
+          <div class="editor small">
+            <textarea id="artInput" spellcheck="false" placeholder="작가나 작품 이름을 쉼표 또는 줄바꿈으로 구분해 적으세요.
+
+예: 하츠네 미쿠, 원신, wlop"></textarea>
+          </div>
+          <div class="nl-note">
+            작가 이름은 <b>일반 문장과 섞이면 오작동</b>하기 때문에 여기서만 인식합니다. 사전에 없는 이름도 <b>영문이면 그대로 통과</b>시키니 마이너 작가도 그냥 적으면 됩니다. 결과 맨 앞에 붙습니다.
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2 class="panel-title">인식 결과 · 태그 선택</h2>
             <button id="nlReset" type="button">선택 초기화</button>
           </div>
@@ -421,7 +436,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v2.3 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v2.5 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -1162,69 +1177,104 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     ['머리가 긴','long hair',1],['머리가 짧','short hair',1],['머리 긴','long hair',1],['머리 짧','short hair',1],
     ['피부가 어두','dark skin',1],['피부가 하얀','pale skin',1],['피부가 흰','pale skin',1],
     ['눈이 큰','wide-eyed',1],['말랐','slim',1],['날씬','slim',1],
+    // 서술형 보정 — 데이터셋이 명사형 위주라 "~는/~한" 형태를 따로 잡아줍니다
+    ['웃는 얼굴','smile',1],['웃는','smile',1],['미소 띤','smile',1],
+    ['손 흔드는','waving',1.1],['손 흔들','waving',1.1],['인사하는','waving',1.1],
+    ['앉아 있는','sitting',1],['앉아있는','sitting',1],['서 있는','standing',1],['서있는','standing',1],
+    ['칼 든','holding sword',1.1],['칼 들','holding sword',1.1],['검 든','holding sword',1.1],
+    ['총 든','holding gun',1.1],['우산 든','holding umbrella',1.1],['꽃 든','holding flower',1.1],
+    ['고개 숙인','head down',1.1],['고개 숙','head down',1.1],
+    ['팔 벌린','outstretched arms',1.1],['손 내민','outstretched hand',1.1],
+    ['등 돌린','from behind',1.2],['돌아선','from behind',1.2],
+    ['기대어 선','leaning',1],['기댄','leaning',1],
+    ['누워 있는','lying',1],['누워있는','lying',1],
+    ['달리는','running',1.2],['뛰어가는','running',1.2],
+    ['춤추는','dancing',1.2],['노래하는','singing',1.1],
+    ['먹고 있는','eating',1.1],['마시고 있는','drinking',1.1],
   ].sort((a,b) => b[0].length - a[0].length);
 
   /* ---- Korean phrase lookup -------------------------------------------
      Built-in entries win over imported ones (they carry hand-tuned
      weights); imported data fills in the vocabulary the hand list lacks. */
-  const koMap = new Map();   // phrase -> {tags, w, src, alts:[...]}
-  const koLoose = new Map(); // space-stripped phrase -> canonical phrase
-  let koMaxLen = 2;
+  const koMap = new Map();       // general vocabulary — used by the main box
+  const koLoose = new Map();
+  const koArt = new Map();       // artist names — used by the artist box only
+  const koArtLoose = new Map();
+  let koMaxLen = 2, koArtMaxLen = 2;
   const MAX_ALTS = 8;
   const looseKey = s => s.replace(/\s+/g,'');
-  function koAdd(phrase, tags, w, src){
+
+  function addTo(map, loose, phrase, tags, w, src, isArt){
     const p = phrase.trim();
-    if(p.length < 2) return;                 // 1-char keys match far too much
-    const cur = koMap.get(p);
+    if(p.length < 2) return false;
+    const cur = map.get(p);
     if(cur){
-      // Keep the primary as decided by priority, but remember the rest so the
-      // user can switch to a different tag for the same phrase.
       if(cur.alts.length < MAX_ALTS && !cur.alts.includes(tags) && tags !== cur.tags)
         cur.alts.push(tags);
-      return;
+      return false;
     }
-    koMap.set(p, { tags, w, src, alts: [] });
-    if(p.length > koMaxLen) koMaxLen = Math.min(p.length, 28);
-    // Spacing in Korean is inconsistent ("긴 머리" vs "긴머리"), so keep a
+    map.set(p, { tags, w, src, alts: [] });
+    if(isArt){ if(p.length > koArtMaxLen) koArtMaxLen = Math.min(p.length, 28); }
+    else     { if(p.length > koMaxLen)    koMaxLen    = Math.min(p.length, 28); }
+    // Korean spacing is inconsistent ("긴 머리" vs "긴머리"), so keep a
     // space-insensitive index. The spaced form wins, because an unspaced
     // variant often collides with a different tag's keyword by accident.
     const lk = looseKey(p);
     if(lk.length >= 2){
-      const prev = koLoose.get(lk);
-      if(!prev || (p.includes(' ') && !prev.includes(' '))) koLoose.set(lk, p);
+      const prev = loose.get(lk);
+      if(!prev || (p.includes(' ') && !prev.includes(' '))) loose.set(lk, p);
     }
+    return true;
   }
+  function koAdd(phrase, tags, w, src){ return addTo(koMap, koLoose, phrase, tags, w, src, false); }
+  function koArtAdd(phrase, tags){ return addTo(koArt, koArtLoose, phrase, tags, 1, 'import', true); }
   KO.forEach(([k, t, w]) => koAdd(k, t, w, 'builtin'));
   const builtinKoCount = koMap.size;
-  let importedKoCount = 0, importedTagCount = 0, importedLabel = '';
+  let importedKoCount = 0, importedTagCount = 0, importedArtCount = 0, importedLabel = '';
 
   const BOOST = /(매우|아주|엄청|진짜|완전|강하게|잔뜩)\s*$/;
   const SOFT  = /(살짝|약간|조금|은은)\s*$/;
   const NEGAT = /^\s*(?:[은는이가도을를만]\s*)?(없|않|안 |빼고|빼 |제외|말고|금지)/;
 
+  // A dictionary hit must line up with word boundaries, otherwise a short key
+  // silently eats the front of a longer unknown word ("아티스트" → "아티").
+  const isHangul = ch => ch >= '\uAC00' && ch <= '\uD7A3';
+  const ALLOWED_TAIL = new Set([
+    '','가','이','은','는','을','를','의','에','도','만','로','와','과','랑','께','서','야','여','님','들',
+    '에서','에게','으로','이랑','부터','까지','처럼','보다','한테','라고','이고','라서','지만','인데','이며',
+    '이다','였다','이라','라는','이란','든지','한','할','함','임','인','된','들이','들의','들을',
+    '하는','하고','하며','하던','했던','해서','하지','한다','합니다','하면','하니',
+    '되는','되고','된다','되어','스러운','스럽게','적인','적으로',
+    '있는','있고','있게','없는','없이','같은','같이','다운','스런'
+  ]);
+
   let nlSdPlain = '', nlNaiPlain = '', nlNegPlain = '';
   const koChoice = new Map();   // korean phrase -> chosen tag string ('' = off)
 
-  function analyzeNL(text){
+  // Boundary-aware longest-match scan, shared by the prose box and artist box.
+  function scan(text, map, loose, maxLen){
     const claimed = new Array(text.length).fill(false);
     const hits = [];
-    // Longest-match-first sliding window. With tens of thousands of keys a
-    // per-key indexOf scan is far too slow, so we probe the map instead.
     for(let i = 0; i < text.length; i++){
       if(claimed[i]) continue;
-      const maxL = Math.min(koMaxLen, text.length - i);
+      // Don't start mid-word: only at a real boundary, or right after text that
+      // a previous match already consumed (handles "긴머리고양이귀").
+      if(i > 0 && isHangul(text[i-1]) && !claimed[i-1]) continue;
+      const maxL = Math.min(maxLen, text.length - i);
       for(let L = maxL; L >= 2; L--){
         const slice = text.substr(i, L);
-        let key = slice, entry = koMap.get(slice);
-        // Korean spacing is inconsistent. If the literal slice misses, or the
-        // canonical spaced form of it exists, prefer that — an unspaced string
-        // frequently collides with an unrelated tag's keyword.
-        const canon = koLoose.get(looseKey(slice));
+        let key = slice, entry = map.get(slice);
+        const canon = loose.get(looseKey(slice));
         if(canon && canon !== slice){
-          const cEntry = koMap.get(canon);
+          const cEntry = map.get(canon);
           if(cEntry && (!entry || canon.includes(' '))){ key = canon; entry = cEntry; }
         }
         if(!entry) continue;
+        // The rest of this word must be a plausible particle/ending, otherwise
+        // we have only matched a prefix of a word the dictionary doesn't know.
+        let wEnd = i + L;
+        while(wEnd < text.length && isHangul(text[wEnd])) wEnd++;
+        if(!ALLOWED_TAIL.has(text.slice(i + L, wEnd))) continue;
         let free = true;
         for(let k = i; k < i + L; k++) if(claimed[k]){ free = false; break; }
         if(!free) break;
@@ -1234,6 +1284,38 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         break;
       }
     }
+    return { hits, claimed };
+  }
+
+  // Artist box: one name per line or comma-separated. Names are discrete
+  // tokens, so they are matched whole — sub-scanning a name like "sakimichan"
+  // would shred it into unrelated tags ("sak", "mi").
+  function analyzeArtists(text){
+    if(!text.trim()) return { tags: [], unmatched: [] };
+    const out = [], unmatched = [];
+    const lookup = (map, loose, p) => {
+      const direct = map.get(p);
+      if(direct) return direct;
+      const canon = loose.get(looseKey(p));
+      return canon ? map.get(canon) : null;
+    };
+    text.split(/[,\n]/).forEach(part => {
+      const p = part.trim().replace(/\s+/g,' ');
+      if(!p) return;
+      // artists first, then character/series proper names
+      const hit = lookup(koArt, koArtLoose, p) || lookup(koMap, koLoose, p);
+      if(hit){ out.push({ text: hit.tags, alts: hit.alts || [], key: p }); return; }
+      // Not in the dictionary: a latin name is almost certainly already a
+      // Danbooru tag, so let it through untouched.
+      if(/^[a-zA-Z0-9 _()\-.':!&+]+$/.test(p)) out.push({ text: p, alts: [], key: p, raw: true });
+      else unmatched.push(p);
+    });
+    const seen = new Set();
+    return { tags: out.filter(t => !seen.has(t.text) && seen.add(t.text)), unmatched };
+  }
+
+  function analyzeNL(text){
+    const { hits, claimed } = scan(text, koMap, koLoose, koMaxLen);
     hits.sort((a,b) => a.start - b.start);
 
     const pos = [], neg = [];
@@ -1312,17 +1394,24 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       $('nlSd').innerHTML = ''; $('nlNai').innerHTML = ''; $('nlNeg').innerHTML = '';
       $('nlNote').innerHTML = '사전 기반이라 짧고 또렷한 표현일수록 잘 잡힙니다. 쉼표나 마침표로 끊어 쓰면 정확도가 올라갑니다.';
       renderPicker([]);
+      $('artCount').textContent = '0개';
       nlSdPlain = nlNaiPlain = nlNegPlain = '';
       return;
     }
     const { pos, neg, hits, unmatched } = analyzeNL(text);
     renderPicker(hits);
 
+    const art = analyzeArtists($('artInput').value);
+    $('artCount').textContent = art.tags.length + '개';
+
     let P = pos.slice();
     if($('optSubject').checked && !P.some(t => /^(1girl|1boy|2girls|2boys|multiple girls|multiple boys|1other)$/.test(t.text))){
       // 인물 묘사가 있는데 수 태그가 없으면 1girl을 기본으로
       if(P.length) P.unshift({ text:'1girl', weight:1 });
     }
+    // Artist / series tags conventionally lead the prompt.
+    if(art.tags.length)
+      P = art.tags.map(t => ({ text:t.text, weight:1 })).concat(P.filter(t => !art.tags.some(a => a.text === t.text)));
     if($('optQuality').checked && P.length){
       P = P.concat([
         { text:'best quality', weight:1 },
@@ -1349,9 +1438,13 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       (unmatched.length
         ? ' · 인식 못함: ' + unmatched.slice(0,10).map(u => '<span class="chip">' + esc(u) + '</span>').join('') +
           (unmatched.length > 10 ? ' 외 ' + (unmatched.length-10) + '개' : '')
+        : '') +
+      (art.unmatched.length
+        ? ' · 작가칸 인식 못함: ' + art.unmatched.map(u => '<span class="chip">' + esc(u) + '</span>').join('')
         : '');
   }
   $('nlInput').addEventListener('input', render3);
+  $('artInput').addEventListener('input', render3);
   $('nlReset').onclick = () => { koChoice.clear(); render3(); };
   $('optQuality').addEventListener('change', render3);
   $('optSubject').addEventListener('change', render3);
@@ -1360,6 +1453,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   $('copyNlNeg').onclick = e => copy(e.target, nlNegPlain);
   $('ex3').onclick = () => {
     $('nlInput').value = '선글라스를 낮게 걸쳐쓴 톰보이 여자. 짧은 머리, 태닝된 피부에 청반바지. 담배 물고 씩 웃으면서 옆모습으로 걷는 중. 흰 배경, 흐린 배경은 빼고';
+    $('artInput').value = '';
     render3();
   };
 
@@ -1370,6 +1464,31 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   // tens of thousands of rows, so they are useless for Korean matching —
   // they still feed the English typo dictionary.
   const KO_SKIP_CATEGORIES = new Set(['Source and Artist']);
+  const ARTIST_MARK = /(아티스트|작가|일러스트레이터|만화가|필명|작가명)/;
+
+  // Within "Source and Artist" the rows are a mix of illustrators, series and
+  // characters. Illustrator names belong in the dedicated artist box — mixing
+  // them into ordinary prose matching causes constant false hits.
+  const isArtistRow = r => KO_SKIP_CATEGORIES.has(r.cat) && ARTIST_MARK.test(r.ko.slice(1).join(','));
+
+  // Character/series rows carry useful proper names ("하츠네 미쿠") but their
+  // keyword lists are generic ("아티스트", "시리즈", "기도") and shared by
+  // thousands of rows, which poisons matching. So for those rows we index the
+  // proper name only. Other categories use both name and keywords.
+  function koKeysFor(r, skipKoCats){
+    const out = [];
+    const isSource = KO_SKIP_CATEGORIES.has(r.cat);
+    const name = (r.ko[0] || '').trim();
+    if(name){
+      out.push(name);
+      // "나히다 (원신)" should also be reachable as just "나히다"
+      const base = name.replace(/\s*[([].*$/, '').trim();
+      if(base && base !== name && base.length >= 2) out.push(base);
+    }
+    if(!isSource) for(let i = 1; i < r.ko.length; i++) out.push(r.ko[i]);
+    else if(skipKoCats === false) for(let i = 1; i < r.ko.length; i++) out.push(r.ko[i]);
+    return out;
+  }
   const KO_STOPWORDS = new Set(['아티스트','작가','일러스트레이터','캐릭터','만화가','필명','주인공','그림','태그','시리즈','게임','애니메이션','원작',
     '장면','모습','느낌','분위기','상황','이미지','사진','일러스트','작품','스타일','묘사','표현','모양','형태','부분','정도','상태','종류','전체','사람','인물','여러','하나','모두']);
 
@@ -1454,25 +1573,25 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
 
   function applyDataset(rows, opts){
     const skipKoCats = opts && opts.skipArtistKo !== false;
-    let addedTags = 0, addedKo = 0;
+    let addedTags = 0, addedKo = 0, addedArt = 0;
     // Highest-count tags first so the best tag wins a contested phrase.
     const sorted = rows.slice().sort((a,b) => (b.count||0) - (a.count||0));
     sorted.forEach(r => {
       const disp = r.en.replace(/_/g,' ').trim();
       const n = normTag(disp);
       if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp); addedTags++; }
-      if(skipKoCats && KO_SKIP_CATEGORIES.has(r.cat)) return;
-      r.ko.forEach(k => {
+      const artistRow = isArtistRow(r);
+      koKeysFor(r, skipKoCats).forEach(k => {
         const p = k.trim();
         if(p.length < 2 || KO_STOPWORDS.has(p)) return;
-        const before = koMap.size;
-        koAdd(p, disp, 1, 'import');
-        if(koMap.size > before) addedKo++;
+        if(artistRow){ if(koArtAdd(p, disp)) addedArt++; return; }
+        if(koAdd(p, disp, 1, 'import')) addedKo++;
       });
     });
     importedTagCount += addedTags;
     importedKoCount  += addedKo;
-    return { addedTags, addedKo };
+    importedArtCount += addedArt;
+    return { addedTags, addedKo, addedArt };
   }
 
 
@@ -1481,7 +1600,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   // dataset does not monopolize the main thread.
   async function applyDatasetAsync(rows, opts){
     const skipKoCats = opts && opts.skipArtistKo !== false;
-    let addedTags = 0, addedKo = 0;
+    let addedTags = 0, addedKo = 0, addedArt = 0;
     const sorted = rows.slice().sort((a,b) => (b.count||0) - (a.count||0));
     const CHUNK = 700;
     for(let start = 0; start < sorted.length; start += CHUNK){
@@ -1491,20 +1610,20 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         const disp = r.en.replace(/_/g,' ').trim();
         const n = normTag(disp);
         if(n && !dictSet.has(n)){ dictSet.add(n); dictDisplay.set(n, disp); addedTags++; }
-        if(skipKoCats && KO_SKIP_CATEGORIES.has(r.cat)) continue;
-        r.ko.forEach(k => {
+        const artistRow = isArtistRow(r);
+        koKeysFor(r, skipKoCats).forEach(k => {
           const p = k.trim();
           if(p.length < 2 || KO_STOPWORDS.has(p)) return;
-          const before = koMap.size;
-          koAdd(p, disp, 1, 'import');
-          if(koMap.size > before) addedKo++;
+          if(artistRow){ if(koArtAdd(p, disp)) addedArt++; return; }
+          if(koAdd(p, disp, 1, 'import')) addedKo++;
         });
       }
       if(end < sorted.length) await new Promise(r => setTimeout(r, 0));
     }
     importedTagCount += addedTags;
     importedKoCount += addedKo;
-    return { addedTags, addedKo };
+    importedArtCount += addedArt;
+    return { addedTags, addedKo, addedArt };
   }
 
   /* ---- persistence (IndexedDB; silently skipped where unavailable) ---- */
@@ -1555,6 +1674,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   function dictStatus(){
     const parts = ['내장 ' + builtinKoCount.toLocaleString() + '개'];
     if(importedKoCount)  parts.push('한국어 +' + importedKoCount.toLocaleString());
+    if(importedArtCount) parts.push('작가 +' + importedArtCount.toLocaleString());
     if(importedTagCount) parts.push('태그 +' + importedTagCount.toLocaleString());
     return parts.join(' · ');
   }
