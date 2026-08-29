@@ -132,6 +132,13 @@
   /* ---------- NL specifics ---------- */
   .nl-note{padding:11px 14px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--muted);line-height:1.7}
   .nl-note b{color:var(--warn);font-weight:500}
+  .src-tag{font-size:10px;border-radius:2px;padding:0 5px;letter-spacing:.04em}
+  .src-tag.p{color:var(--pos);border:1px solid var(--pos)}
+  .src-tag.n{color:var(--neg);border:1px solid var(--neg)}
+  .chip.add{cursor:pointer;border-color:var(--warn);color:var(--warn);font-family:var(--mono)}
+  .chip.add:hover{background:rgba(201,162,39,.16);color:var(--ink)}
+  .chip-x{border:0;background:transparent;color:var(--muted);padding:0 0 0 3px;font-size:11px;cursor:pointer;letter-spacing:0}
+  .chip-x:hover{color:var(--err)}
   .chip{display:inline-block;border:1px solid var(--rule);border-radius:3px;padding:0 6px;margin:1px 2px;color:var(--ink);font-size:11px}
 
   /* ---------- tag picker ---------- */
@@ -204,7 +211,7 @@
 
         <div class="diag">
           <div class="diag-head">
-            <h2><span class="stepnum" style="margin-right:6px">2</span>문법 검사</h2>
+            <h2><span class="stepnum" style="margin-right:6px">2</span>문법 검사 <span style="font-weight:400;letter-spacing:0;text-transform:none;font-family:var(--mono);font-size:10px">· 내 태그 칸 포함</span></h2>
             <div style="display:flex;align-items:center;gap:12px">
               <div class="tally" id="tally"></div>
               <button id="fixAllBtn" type="button" class="primary" disabled>전부 고치기</button>
@@ -215,11 +222,23 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2 class="panel-title pos">내 긍정 태그 (선택)</h2>
+            <span class="count" id="posInCount">0개</span>
+          </div>
+          <div class="editor small">
+            <textarea id="posInput" spellcheck="false" placeholder="항상 붙이는 태그나 LoRA를 여기에. 결과에 합쳐지고 문법 검사도 함께 받습니다.
+
+예: masterpiece, best quality, &lt;lora:mystyle:0.7&gt;"></textarea>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2 class="panel-title neg">내 네거티브 (선택)</h2>
             <span class="count" id="negInCount">0개</span>
           </div>
           <div class="editor small">
-            <textarea id="negInput" spellcheck="false" placeholder="평소 쓰는 네거티브가 있으면 여기에. 결과에 합쳐집니다."></textarea>
+            <textarea id="negInput" spellcheck="false" placeholder="평소 쓰는 네거티브가 있으면 여기에. 결과에 합쳐지고 문법 검사도 함께 받습니다."></textarea>
           </div>
         </section>
 
@@ -239,7 +258,7 @@
               <option value="replace">안쪽 값 우선</option>
               <option value="multiply">곱하기 (NAI 방식)</option>
             </select>
-            <label class="opt"><input type="checkbox" id="optNegFirst" checked> 내 네거티브를 앞에</label>
+            <label class="opt"><input type="checkbox" id="optOwnFirst" checked> 내 태그를 앞에</label>
           </div>
           <div class="nl-note">오타 검사 사전은 <b>자연어 → 태그</b> 탭에서 데이터셋을 불러오면 함께 확장됩니다. <span class="count" id="dictCount"></span></div>
         </details>
@@ -320,7 +339,7 @@
 
   <!-- ================= TAB 3 : 자연어 → 태그 ================= -->
   <section class="tab" id="t3">
-    <p class="tab-desc">한국어 문장을 쓰면 내장 사전(한국어 ↔ Danbooru)이 <b>태그로 바꾸고 가중치를 알아서</b> 붙입니다. <b>"매우/살짝"</b>으로 강조를 조절하고, <b>"없이/빼고"</b>가 붙은 말은 네거티브로 보냅니다.</p>
+    <p class="tab-desc">한국어를 태그로 바꿉니다. <b>쉼표로 끊어 쓸수록 정확</b>하고, 서술문도 어미를 보정해 최대한 잡아냅니다. <b>"매우/살짝"</b>으로 강조를 조절하고 <b>"없이/빼고"</b>는 네거티브로 보냅니다. 작가·시리즈는 <b>아래 전용 칸</b>에 따로 적으세요.</p>
 
     <div class="grid">
       <div class="col">
@@ -330,13 +349,29 @@
             <button id="ex3" type="button" class="ghost">예시</button>
           </div>
           <div class="editor mid">
-            <textarea id="nlInput" spellcheck="false" placeholder="예: 선글라스를 낮게 걸쳐쓴 톰보이 여자. 흰 배경, 옆모습으로 걷는 중. 담배 물고 씩 웃는 얼굴"></textarea>
+            <textarea id="nlInput" spellcheck="false" placeholder="쉼표로 끊어 쓰면 가장 정확합니다.
+
+예: 톰보이, 짧은 머리, 선글라스 낮게 걸침, 담배, 옆모습, 걷는 중, 흰 배경
+
+긴 서술문도 되지만 인식률이 떨어집니다."></textarea>
           </div>
           <div class="controls">
             <label class="opt"><input type="checkbox" id="optQuality" checked> 품질 태그 자동 추가</label>
             <label class="opt"><input type="checkbox" id="optSubject" checked> 인물 태그 보정 (1girl 등)</label>
           </div>
           <div class="nl-note" id="nlNote"></div>
+          <div id="teachBox" style="display:none;padding:12px 14px;border-top:1px solid var(--rule);background:var(--panel-2)">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+              <b id="teachWord" style="color:var(--pos)"></b> 에 지정할 태그 (쉼표로 여러 개 가능)
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="teachTag" type="text" spellcheck="false" placeholder="예: tribadism"
+                style="flex:1;min-width:160px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
+              <button id="teachSave" type="button" class="primary">저장</button>
+              <button id="teachCancel" type="button">취소</button>
+            </div>
+          </div>
+          <div id="userMap" style="display:none"></div>
         </section>
 
         <section class="panel">
@@ -436,7 +471,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v2.5 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v2.8 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -738,6 +773,95 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     return list;
   }
 
+  // The "my tags" boxes hold SD-syntax text, so they get their own check:
+  // unbalanced brackets, malformed weights, colon clashes and typos.
+  function diagnoseOwn(src, label){
+    const list = [];
+    if(!src.trim()) return list;
+
+    let depth = 0, sq = 0;
+    for(let i = 0; i < src.length; i++){
+      const c = src[i];
+      if(c === '(') depth++;
+      else if(c === ')'){
+        depth--;
+        if(depth < 0){
+          list.push({ sev:'error', label, title:'짝 없는 <code>)</code>',
+            detail:label + ' 칸 ' + (i+1) + '번째 글자에 여는 괄호 없는 <code>)</code>가 있습니다.' });
+          depth = 0;
+        }
+      }
+      else if(c === '[') sq++;
+      else if(c === ']'){
+        sq--;
+        if(sq < 0){
+          list.push({ sev:'error', label, title:'짝 없는 <code>]</code>',
+            detail:label + ' 칸 ' + (i+1) + '번째 글자에 여는 괄호 없는 <code>]</code>가 있습니다.' });
+          sq = 0;
+        }
+      }
+    }
+    if(depth > 0) list.push({ sev:'error', label, title:'닫히지 않은 <code>(</code> ' + depth + '개',
+      detail:label + ' 칸의 괄호가 닫히지 않았습니다. SD가 가중치를 잘못 읽습니다.' });
+    if(sq > 0) list.push({ sev:'error', label, title:'닫히지 않은 <code>[</code> ' + sq + '개',
+      detail:label + ' 칸의 대괄호가 닫히지 않았습니다.' });
+
+    const seen = new Map();
+    splitTopLevel(src).forEach(raw => {
+      const t = raw.trim();
+      if(!t) return;
+
+      // (tag:weight) — check the weight is sane
+      const m = /^\(([\s\S]+):([^:)]*)\)$/.exec(t);
+      if(m){
+        const w = m[2].trim();
+        if(w === '' || isNaN(parseFloat(w))){
+          list.push({ sev:'error', label, title:'가중치가 숫자가 아님 — <code>' + esc(t) + '</code>',
+            detail:'<code>(태그:1.3)</code> 형식이어야 합니다. 태그에 콜론이 들어가면 SD가 마지막 콜론을 가중치로 읽어 깨집니다.' });
+        } else if(parseFloat(w) > 2) {
+          list.push({ sev:'warn', label, title:'가중치 ' + parseFloat(w) + ' — 과함',
+            detail:'<code>' + esc(t) + '</code> · 2를 넘기면 대개 그 태그만 튀어 이미지가 망가집니다.' });
+        } else if(parseFloat(w) === 0){
+          list.push({ sev:'warn', label, title:'가중치 0 — 무시됨',
+            detail:'<code>' + esc(t) + '</code>는 결과에 영향을 주지 않습니다.' });
+        }
+        // colon inside the tag part collides with the weight syntax
+        if(m[1].includes(':') && !/^<[^>]+>$/.test(m[1].trim())){
+          list.push({ sev:'error', label, title:'콜론 + 가중치 충돌 — <code>' + esc(t) + '</code>',
+            detail:'태그 안의 콜론 때문에 SD가 가중치를 잘못 끊어 읽습니다. 콜론을 <code>_</code>로 바꾸거나 가중치를 빼세요.' });
+        }
+      }
+
+      // bare tag containing a colon that isn't LoRA/weight syntax
+      const bare = t.replace(/^\(+|\)+$/g,'');
+      if(!m && bare.includes(':') && !/^<[^>]+>$/.test(t) && !/^\w+:\S+$/.test(bare)){
+        list.push({ sev:'warn', label, title:'콜론이 포함된 태그 — <code>' + esc(t) + '</code>',
+          detail:'가중치 문법과 헷갈릴 수 있습니다. 의도한 게 아니면 콜론을 <code>_</code>로 바꾸세요.' });
+      }
+
+      // duplicates within the same box
+      const plain = bare.replace(/:[\d.]+$/,'').trim().toLowerCase();
+      if(plain){
+        if(seen.has(plain)) list.push({ sev:'warn', label, title:'중복 — <code>' + esc(plain) + '</code>',
+          detail:label + ' 칸 안에서 같은 태그가 두 번 나옵니다. 중복 제거 옵션이 켜져 있으면 앞의 것만 남습니다.' });
+        else seen.set(plain, true);
+      }
+
+      // typo check against the dictionary
+      const core = plain.replace(/^by /,'');
+      if(core && checkable(core)){
+        const n = normTag(core);
+        if(n && !dictSet.has(n)){
+          const near = nearestTag(n);
+          if(near && near.dist > 0)
+            list.push({ sev:'warn', label, title:'오타? <code>' + esc(core) + '</code> → <code>' + esc(near.tag) + '</code>',
+              detail:label + ' 칸 · 사전에 없는 태그인데 ' + near.dist + '글자 차이입니다. 의도한 태그면 그대로 둬도 됩니다.' });
+        }
+      }
+    });
+    return list;
+  }
+
   function artistify(text, mode){
     const m = /^artist\s*:\s*([\s\S]+)$/i.exec(text);
     if(!m) return text;
@@ -771,6 +895,11 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     $('inCount').textContent = src.length.toLocaleString() + '자';
     const {tags, found} = parse(src, $('nestMode').value);
     issues = src.trim() ? diagnose(src, tags, found) : [];
+    // The two "my tags" boxes are SD syntax, so they get their own checks.
+    issues = issues.concat(
+      diagnoseOwn($('posInput').value, '긍정'),
+      diagnoseOwn($('negInput').value, '네거티브')
+    );
     if(activeIssue >= issues.length) activeIssue = -1;
 
     const useArtist  = $('optArtist').checked;
@@ -787,10 +916,15 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       else if(t.weight !== 0) pos.push({ text, weight:t.weight });
     });
 
+    const ownPos = splitTopLevel($('posInput').value);
+    $('posInCount').textContent = ownPos.length + '개';
+    const ownPosItems = ownPos.map(text => ({ text, weight:1, verbatim:true }));
+    pos = $('optOwnFirst').checked ? ownPosItems.concat(pos) : pos.concat(ownPosItems);
+
     const ownNeg = splitTopLevel($('negInput').value);
     $('negInCount').textContent = ownNeg.length + '개';
     const ownItems = ownNeg.map(text => ({ text, weight:1, verbatim:true }));
-    neg = $('optNegFirst').checked ? ownItems.concat(neg) : neg.concat(ownItems);
+    neg = $('optOwnFirst').checked ? ownItems.concat(neg) : neg.concat(ownItems);
 
     if(dedupe){
       const a = new Set();
@@ -812,27 +946,30 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
 
   function renderIssues(src){
     const box = $('issues');
+    const anyInput = src.trim() || $('posInput').value.trim() || $('negInput').value.trim();
     const errs  = issues.filter(x => x.sev === 'error').length;
     const warns = issues.filter(x => x.sev === 'warn').length;
     const fixable = issues.filter(x => x.apply && x.autofix !== false).length;
-    $('tally').innerHTML = !src.trim() ? '' :
+    $('tally').innerHTML = !anyInput ? '' :
       (errs  ? '<span class="t-err">오류 ' + errs + '</span>' : '') +
       (warns ? '<span class="t-warn">경고 ' + warns + '</span>' : '') +
       (!errs && !warns ? '<span class="t-ok">문제 없음</span>' : '');
     $('fixAllBtn').disabled = fixable === 0;
-    if(!src.trim()){ box.innerHTML = '<div class="idle">입력하면 자동으로 검사합니다</div>'; return; }
+    if(!anyInput){ box.innerHTML = '<div class="idle">입력하면 자동으로 검사합니다</div>'; return; }
     if(!issues.length){ box.innerHTML = '<div class="clean">문법 문제가 없습니다. 오른쪽에서 바로 복사하세요.</div>'; return; }
     box.innerHTML = issues.map((x,i) =>
       '<div class="issue">' +
         '<div class="sev ' + x.sev + '"></div>' +
         '<div class="issue-body">' +
-          '<p class="issue-title">' + x.title +
+          '<p class="issue-title">' +
+            (x.label ? '<span class="src-tag ' + (x.label === '긍정' ? 'p' : 'n') + '">' + x.label + '</span> ' : '') +
+            x.title +
             (x.start >= 0 ? ' <span class="at">— ' + (x.start+1) + '번째 글자</span>' : '') +
           '</p>' +
           '<p class="issue-detail">' + x.detail + '</p>' +
         '</div>' +
         '<div class="issue-acts">' +
-          (x.start >= 0 ? '<button type="button" data-show="' + i + '">보기</button>' : '') +
+          (x.start >= 0 && !x.label ? '<button type="button" data-show="' + i + '">보기</button>' : '') +
           (x.apply ? '<button type="button" class="primary" data-fix="' + i + '">' + x.fixLabel + '</button>' : '') +
         '</div>' +
       '</div>'
@@ -904,7 +1041,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   input.addEventListener('scroll', () => { backdrop.scrollTop = input.scrollTop; });
   input.addEventListener('input', () => { activeIssue = -1; });
 
-  ['input','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optNegFirst'].forEach(id => {
+  ['input','posInput','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optOwnFirst'].forEach(id => {
     const el = $(id);
     el.addEventListener(el.tagName === 'TEXTAREA' ? 'input' : 'change', render);
   });
@@ -1250,24 +1387,59 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
 
   let nlSdPlain = '', nlNaiPlain = '', nlNegPlain = '';
   const koChoice = new Map();   // korean phrase -> chosen tag string ('' = off)
+  const koUser   = new Map();   // korean phrase -> tag(s) the user taught us
 
-  // Boundary-aware longest-match scan, shared by the prose box and artist box.
-  function scan(text, map, loose, maxLen){
+  // Long sentences carry endings the dictionary (mostly noun forms) can't
+  // match. Normalising them lifts recognition a lot on prose input.
+  const SENT_TRIM = [
+    /(하|되|이)?(고 있|어 있|아 있)(다|는|음|었다)/g,
+    /(한|된|인) ?상태(로|에서|의)?/g,
+    /(하|되)?(면서|으면서|며|으며)/g,
+    /(하|되|있|없)(다|는다|습니다|어요|아요|네요|더라|였다|았다|었다)\b/g,
+    // Object marker before a verb only ("책을 읽고" → "책 읽고"). Stripping
+    // particles generally would break phrases like "짧은 머리".
+    /([가-힣])(을|를)\s+(?=[가-힣])/g,
+  ];
+  const userMaxLen = () => {
+    let m = 2;
+    for(const k of koUser.keys()) if(k.length > m) m = Math.min(k.length, 28);
+    return m;
+  };
+
+  function softenProse(text){
+    let t = text;
+    SENT_TRIM.forEach((re,i) => { t = t.replace(re, i === SENT_TRIM.length-1 ? '$1 ' : ' '); });
+    return t.replace(/\s{2,}/g,' ');
+  }
+
+  function scan(text, map, loose, maxLen, useUser){
     const claimed = new Array(text.length).fill(false);
     const hits = [];
     for(let i = 0; i < text.length; i++){
       if(claimed[i]) continue;
+      if(/\s/.test(text[i])) continue;          // never start a match on a space
       // Don't start mid-word: only at a real boundary, or right after text that
       // a previous match already consumed (handles "긴머리고양이귀").
       if(i > 0 && isHangul(text[i-1]) && !claimed[i-1]) continue;
       const maxL = Math.min(maxLen, text.length - i);
       for(let L = maxL; L >= 2; L--){
         const slice = text.substr(i, L);
-        let key = slice, entry = map.get(slice);
-        const canon = loose.get(looseKey(slice));
-        if(canon && canon !== slice){
-          const cEntry = map.get(canon);
-          if(cEntry && (!entry || canon.includes(' '))){ key = canon; entry = cEntry; }
+        let key = slice, entry = null;
+        // Anything the user taught us wins over the shipped dictionary.
+        if(useUser && koUser.has(slice)) entry = { tags: koUser.get(slice), w: 1, alts: [], user: true };
+        if(!entry){
+          entry = map.get(slice);
+          const canon = loose.get(looseKey(slice));
+          if(canon && canon !== slice){
+            // The canonical form must also respect a user override, otherwise
+            // spacing variants would sneak past it.
+            if(useUser && koUser.has(canon)){
+              key = canon; entry = { tags: koUser.get(canon), w: 1, alts: [], user: true };
+            } else {
+              const cEntry = map.get(canon);
+              if(cEntry && (!entry || canon.includes(' '))){ key = canon; entry = cEntry; }
+            }
+          }
         }
         if(!entry) continue;
         // The rest of this word must be a plausible particle/ending, otherwise
@@ -1315,14 +1487,24 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   }
 
   function analyzeNL(text){
-    const { hits, claimed } = scan(text, koMap, koLoose, koMaxLen);
+    const { hits, claimed } = scan(text, koMap, koLoose, Math.max(koMaxLen, userMaxLen()), true);
+
+    // Second pass: many sentences only fail because of verb endings, so retry
+    // on a softened copy and keep anything new that turns up.
+    const softened = softenProse(text);
+    if(softened !== text){
+      const found = new Set(hits.map(h => h.key));
+      scan(softened, koMap, koLoose, Math.max(koMaxLen, userMaxLen()), true).hits.forEach(h => {
+        if(!found.has(h.key)){ found.add(h.key); hits.push({ ...h, start:-1, end:-1, softened:true }); }
+      });
+    }
     hits.sort((a,b) => a.start - b.start);
 
     const pos = [], neg = [];
     hits.forEach(h => {
       let w = h.w;
-      const before = text.slice(Math.max(0, h.start - 7), h.start);
-      const after  = text.slice(h.end, h.end + 5);
+      const before = h.start >= 0 ? text.slice(Math.max(0, h.start - 7), h.start) : '';
+      const after  = h.start >= 0 ? text.slice(h.end, h.end + 5) : '';
       if(BOOST.test(before)) w = Math.min(round2(w + 0.2), 1.6);
       else if(SOFT.test(before)) w = Math.max(round2(w - 0.15), 0.9);
       const negated = NEGAT.test(after);
@@ -1432,20 +1614,89 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       : '<span style="color:#4B4339;font-size:12px">"없이 / 빼고 / 말고"가 붙은 표현이 여기로 옵니다</span>';
 
     const multiCount = hits.filter(h => (h.alts||[]).length).length;
+    // Prose with lots of endings recognises poorly; nudge toward comma style.
+    const words = text.split(/[\s,.!?·]+/).filter(w => /[가-힣]/.test(w)).length;
+    const sparse = words >= 8 && hits.length / words < 0.5;
     $('nlNote').innerHTML =
+      (sparse ? '<b style="color:var(--warn)">문장이 길어 인식률이 낮습니다.</b> 쉼표로 끊어 쓰면 훨씬 정확해집니다 — 예: <code>팬티스타킹, 두 여자, 다리 얽힘</code><br>' : '') +
       '인식한 표현 <b style="color:var(--pos)">' + hits.length + '개</b>' +
       (multiCount ? ' · 후보가 여러 개인 표현 <b style="color:var(--neg)">' + multiCount + '개</b> (아래에서 선택)' : '') +
       (unmatched.length
-        ? ' · 인식 못함: ' + unmatched.slice(0,10).map(u => '<span class="chip">' + esc(u) + '</span>').join('') +
-          (unmatched.length > 10 ? ' 외 ' + (unmatched.length-10) + '개' : '')
+        ? ' · 인식 못함: ' + unmatched.slice(0,12).map(u =>
+            '<button type="button" class="chip add" data-teach="' + esc(u) + '" title="이 표현에 태그를 지정합니다">' + esc(u) + ' +</button>').join('') +
+          (unmatched.length > 12 ? ' 외 ' + (unmatched.length-12) + '개' : '')
         : '') +
       (art.unmatched.length
         ? ' · 작가칸 인식 못함: ' + art.unmatched.map(u => '<span class="chip">' + esc(u) + '</span>').join('')
         : '');
+
+    // "인식 못함" chips are clickable: teach the tool a tag for that word.
+    $('nlNote').querySelectorAll('[data-teach]').forEach(b => {
+      b.onclick = () => openTeach(b.dataset.teach);
+    });
+    renderUserMap();
+  }
+
+  function openTeach(word){
+    $('teachWord').textContent = word;
+    $('teachBox').style.display = 'block';
+    $('teachTag').value = koUser.get(word) || '';
+    $('teachTag').dataset.word = word;
+    $('teachTag').focus();
+  }
+  function saveTeach(){
+    const word = $('teachTag').dataset.word;
+    const tag  = $('teachTag').value.trim();
+    if(!word) return;
+    if(tag) koUser.set(word, tag); else koUser.delete(word);
+    persistUserMap();
+    $('teachBox').style.display = 'none';
+    render3();
+  }
+  function renderUserMap(){
+    const box = $('userMap');
+    if(!koUser.size){ box.innerHTML = ''; box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div class="nl-note" style="border-top:1px solid var(--rule)">내가 추가한 표현 ' +
+      koUser.size + '개 · ' +
+      [...koUser.entries()].map(([k,v]) =>
+        '<span class="chip">' + esc(k) + ' → ' + esc(v) +
+        ' <button type="button" class="chip-x" data-del="' + esc(k) + '">×</button></span>').join(' ') +
+      '</div>';
+    box.querySelectorAll('[data-del]').forEach(b => {
+      b.onclick = () => { koUser.delete(b.dataset.del); persistUserMap(); render3(); };
+    });
+  }
+  async function persistUserMap(){
+    try{
+      const db = await idb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put([...koUser.entries()], 'usermap');
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    }catch(e){ /* storage unavailable — mappings just won't survive a reload */ }
   }
   $('nlInput').addEventListener('input', render3);
   $('artInput').addEventListener('input', render3);
   $('nlReset').onclick = () => { koChoice.clear(); render3(); };
+  $('teachSave').onclick = saveTeach;
+  $('teachCancel').onclick = () => { $('teachBox').style.display = 'none'; };
+  $('teachTag').addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); saveTeach(); }
+    if(e.key === 'Escape'){ $('teachBox').style.display = 'none'; }
+  });
+  (async () => {
+    try{
+      const db = await idb();
+      const saved = await new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const rq = tx.objectStore(STORE).get('usermap');
+        rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+      });
+      if(Array.isArray(saved)){ saved.forEach(([k,v]) => koUser.set(k,v)); render3(); }
+    }catch(e){ /* no storage */ }
+  })();
   $('optQuality').addEventListener('change', render3);
   $('optSubject').addEventListener('change', render3);
   $('copyNlSd').onclick  = e => copy(e.target, nlSdPlain);
