@@ -260,6 +260,14 @@
             </select>
             <label class="opt"><input type="checkbox" id="optOwnFirst" checked> 내 태그를 앞에</label>
           </div>
+          <div class="controls" style="border-top:1px solid var(--rule)">
+            <label class="opt"><input type="checkbox" id="optAnima1"> <b style="color:var(--pos)">Anima 모드</b></label>
+            <label class="opt"><input type="checkbox" id="optAnimaWeight1" checked> 가중치 강화</label>
+            <label class="opt"><input type="checkbox" id="optAnimaNeg1" checked> 권장 네거티브 추가</label>
+          </div>
+          <div class="nl-note">
+            <b style="color:var(--pos)">Anima 모드</b>는 <code>artist:이름</code>을 <code>@이름</code>으로 바꾸고, 언더스코어를 공백으로 되돌리며(<code>score_</code> 태그는 예외), 가중치를 Anima에 맞게 올립니다. Anima는 SDXL보다 세게 줘야 먹혀서 <code>(태그:1.1)</code>은 거의 효과가 없습니다.
+          </div>
           <div class="nl-note">오타 검사 사전은 <b>자연어 → 태그</b> 탭에서 데이터셋을 불러오면 함께 확장됩니다. <span class="count" id="dictCount"></span></div>
         </details>
       </div>
@@ -476,7 +484,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v2.9 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v3.0 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -938,6 +946,27 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       neg = neg.filter(t => { const k=t.text.toLowerCase(); if(b.has(k)) return false; b.add(k); return true; });
     }
 
+    // Anima conventions: "@artist", spaces instead of underscores (score tags
+    // excepted) and stronger weights than SDXL needs.
+    if($('optAnima1').checked){
+      const toAnima = t => {
+        if(t.verbatim) return t;
+        let text = t.text.replace(/^artist\s*:\s*/i, '@').replace(/^by\s+/i, '@');
+        if(!/^score_\d/.test(text)) text = text.replace(/_/g, ' ');
+        let weight = t.weight;
+        if($('optAnimaWeight1').checked && weight !== 1)
+          weight = Math.min(round2(1 + (weight - 1) * 2.5), 2.2);
+        return { ...t, text, weight };
+      };
+      pos = pos.map(toAnima);
+      neg = neg.map(toAnima);
+      if($('optAnimaNeg1').checked){
+        const ANIMA_NEG = ['worst quality','low quality','score_1','score_2','score_3','artist name'];
+        neg = ANIMA_NEG.filter(q => !neg.some(t => t.text === q))
+                       .map(text => ({ text, weight:1 })).concat(neg);
+      }
+    }
+
     $('outPos').innerHTML = pos.map(t => fmtHtml(t.text,t.weight)).join(', ');
     $('outNeg').innerHTML = neg.map(t => t.verbatim ? esc(t.text) : fmtHtml(t.text,t.weight)).join(', ');
     posPlain = pos.map(t => fmtPlain(t.text,t.weight)).join(', ');
@@ -1046,7 +1075,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   input.addEventListener('scroll', () => { backdrop.scrollTop = input.scrollTop; });
   input.addEventListener('input', () => { activeIssue = -1; });
 
-  ['input','posInput','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optOwnFirst'].forEach(id => {
+  ['input','posInput','negInput','optArtist','artistMode','optDedupe','optUnderscore','nestMode','optOwnFirst','optAnima1','optAnimaWeight1','optAnimaNeg1'].forEach(id => {
     const el = $(id);
     el.addEventListener(el.tagName === 'TEXTAREA' ? 'input' : 'change', render);
   });
