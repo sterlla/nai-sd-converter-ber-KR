@@ -384,8 +384,13 @@
 
 예: 하츠네 미쿠, 원신, wlop"></textarea>
           </div>
+          <div class="controls">
+            <label class="opt"><input type="checkbox" id="optAnima"> <b style="color:var(--pos)">Anima 모드</b></label>
+            <label class="opt"><input type="checkbox" id="optAnimaWeight" checked> 가중치 강화</label>
+          </div>
           <div class="nl-note">
-            작가 이름은 <b>일반 문장과 섞이면 오작동</b>하기 때문에 여기서만 인식합니다. 사전에 없는 이름도 <b>영문이면 그대로 통과</b>시키니 마이너 작가도 그냥 적으면 됩니다. 결과 맨 앞에 붙습니다.
+            작가 이름은 <b>일반 문장과 섞이면 오작동</b>하기 때문에 여기서만 인식합니다. 사전에 없는 이름도 <b>영문이면 그대로 통과</b>시키니 마이너 작가도 그냥 적으면 됩니다.<br>
+            <b style="color:var(--pos)">Anima 모드</b>를 켜면 작가에 <code>@</code>를 붙이고, 공식 가이드의 태그 순서(품질 → 인원수 → 캐릭터·시리즈 → <code>@작가</code> → 일반)로 정렬합니다. 품질 태그는 <code>masterpiece, best quality, score_7, safe</code>, 네거티브에는 권장 기본값이 붙습니다. Anima는 SDXL보다 가중치를 세게 줘야 먹히므로 <code>가중치 강화</code>가 이를 자동으로 올려줍니다.
           </div>
         </section>
 
@@ -471,7 +476,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v2.8 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v2.9 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -1475,11 +1480,13 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       const p = part.trim().replace(/\s+/g,' ');
       if(!p) return;
       // artists first, then character/series proper names
-      const hit = lookup(koArt, koArtLoose, p) || lookup(koMap, koLoose, p);
-      if(hit){ out.push({ text: hit.tags, alts: hit.alts || [], key: p }); return; }
+      const a = lookup(koArt, koArtLoose, p);
+      if(a){ out.push({ text: a.tags, alts: a.alts || [], key: p, kind:'artist' }); return; }
+      const c = lookup(koMap, koLoose, p);
+      if(c){ out.push({ text: c.tags, alts: c.alts || [], key: p, kind:'source' }); return; }
       // Not in the dictionary: a latin name is almost certainly already a
       // Danbooru tag, so let it through untouched.
-      if(/^[a-zA-Z0-9 _()\-.':!&+]+$/.test(p)) out.push({ text: p, alts: [], key: p, raw: true });
+      if(/^[a-zA-Z0-9 _()\-.':!&+]+$/.test(p)) out.push({ text: p, alts: [], key: p, raw: true, kind:'artist' });
       else unmatched.push(p);
     });
     const seen = new Set();
@@ -1580,27 +1587,52 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       nlSdPlain = nlNaiPlain = nlNegPlain = '';
       return;
     }
-    const { pos, neg, hits, unmatched } = analyzeNL(text);
+    let { pos, neg, hits, unmatched } = analyzeNL(text);
     renderPicker(hits);
 
     const art = analyzeArtists($('artInput').value);
     $('artCount').textContent = art.tags.length + '개';
 
+    const anima = $('optAnima').checked;
+    // Anima wants its own quality vocabulary and a fixed section order:
+    // quality/meta/year/safety → count → character → series → @artist → general.
+    const QUALITY_SD    = ['best quality','masterpiece','very aesthetic','absurdres'];
+    const QUALITY_ANIMA = ['masterpiece','best quality','score_7','safe'];
+    const COUNT_RE = /^(1girl|1boy|1other|\d+girls|\d+boys|multiple girls|multiple boys)$/;
+
     let P = pos.slice();
-    if($('optSubject').checked && !P.some(t => /^(1girl|1boy|2girls|2boys|multiple girls|multiple boys|1other)$/.test(t.text))){
+    if($('optSubject').checked && !P.some(t => COUNT_RE.test(t.text))){
       // 인물 묘사가 있는데 수 태그가 없으면 1girl을 기본으로
       if(P.length) P.unshift({ text:'1girl', weight:1 });
     }
-    // Artist / series tags conventionally lead the prompt.
-    if(art.tags.length)
-      P = art.tags.map(t => ({ text:t.text, weight:1 })).concat(P.filter(t => !art.tags.some(a => a.text === t.text)));
-    if($('optQuality').checked && P.length){
-      P = P.concat([
-        { text:'best quality', weight:1 },
-        { text:'masterpiece', weight:1 },
-        { text:'very aesthetic', weight:1 },
-        { text:'absurdres', weight:1 },
-      ].filter(q => !P.some(t => t.text === q.text)));
+
+    if(anima){
+      // Anima needs harder weights than SDXL: (tag:1.1) barely registers.
+      if($('optAnimaWeight').checked)
+        P = P.map(t => ({ ...t, weight: t.weight === 1 ? 1 : Math.min(round2(1 + (t.weight - 1) * 2.5), 2.2) }));
+      const counts  = P.filter(t => COUNT_RE.test(t.text));
+      const general = P.filter(t => !COUNT_RE.test(t.text));
+      const sources = art.tags.filter(t => t.kind === 'source').map(t => ({ text:t.text, weight:1 }));
+      const artists = art.tags.filter(t => t.kind !== 'source')
+                              .map(t => ({ text:'@' + t.text, weight:1 }));
+      const quality = $('optQuality').checked
+        ? QUALITY_ANIMA.filter(q => !general.some(t => t.text === q)).map(text => ({ text, weight:1 }))
+        : [];
+      P = quality.concat(counts, sources, artists, general);
+    } else {
+      if($('optQuality').checked && P.length){
+        P = P.concat(QUALITY_SD.filter(q => !P.some(t => t.text === q)).map(text => ({ text, weight:1 })));
+      }
+      // Artist / series tags conventionally lead the prompt.
+      if(art.tags.length)
+        P = art.tags.map(t => ({ text:t.text, weight:1 })).concat(P.filter(t => !art.tags.some(a => a.text === t.text)));
+    }
+
+    // Anima's documented default negative.
+    if(anima){
+      const ANIMA_NEG = ['worst quality','low quality','score_1','score_2','score_3','artist name'];
+      neg = ANIMA_NEG.filter(q => !neg.some(t => t.text === q))
+                     .map(text => ({ text, weight:1 })).concat(neg);
     }
 
     nlSdPlain  = P.map(t => fmtPlain(t.text, t.weight)).join(', ');
@@ -1698,6 +1730,8 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     }catch(e){ /* no storage */ }
   })();
   $('optQuality').addEventListener('change', render3);
+  $('optAnima').addEventListener('change', render3);
+  $('optAnimaWeight').addEventListener('change', render3);
   $('optSubject').addEventListener('change', render3);
   $('copyNlSd').onclick  = e => copy(e.target, nlSdPlain);
   $('copyNlNai').onclick = e => copy(e.target, nlNaiPlain);
