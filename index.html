@@ -271,7 +271,7 @@
           <div class="nl-note">
             <b style="color:var(--pos)">Anima 모드</b>는 <code>artist:이름</code>을 <code>@이름</code>으로 바꾸고, 언더스코어를 공백으로 되돌리며(<code>score_</code> 태그는 예외), 가중치를 Anima에 맞게 올립니다. Anima는 SDXL보다 세게 줘야 먹혀서 <code>(태그:1.1)</code>은 거의 효과가 없습니다.
           </div>
-          <div class="nl-note">오타 검사 사전은 <b>자연어 → 태그</b> 탭에서 데이터셋을 불러오면 함께 확장됩니다. <span class="count" id="dictCount"></span></div>
+          <div class="nl-note">오타 검사 사전은 <b>자연어 → 태그</b> 탭에서 데이터셋을 불러오면 함께 확장됩니다. <span class="count" id="dictCount2"></span></div>
         </details>
       </div>
 
@@ -303,7 +303,7 @@
 
   <!-- ================= TAB 2 : SD → NAI ================= -->
   <section class="tab" id="t2">
-    <p class="tab-desc">로컬 SD 프롬프트를 NAI 문법으로 되돌립니다. <b>같은 가중치가 이어지면 하나의 블록으로 묶어</b> 깔끔하게 나옵니다. <code>((태그))</code>·<code>[태그]</code> 강조도 숫자 가중치로 계산합니다.</p>
+    <p class="tab-desc">로컬 SD(A1111 · reforge · Forge) 프롬프트를 <b>NAI 또는 Anima</b> 형식으로 바꿉니다. <b>같은 가중치가 이어지면 하나의 블록으로 묶어</b> 깔끔하게 나옵니다. <code>((태그))</code>·<code>[태그]</code> 강조도 숫자 가중치로 계산합니다.</p>
 
     <div class="grid">
       <div class="col">
@@ -315,6 +315,16 @@
           <div class="editor mid">
             <textarea id="sdPos" spellcheck="false" placeholder="예: 1girl, (tomboy, sunglasses:1.3), lowered eyewear, ((tan)), [blurry background]"></textarea>
           </div>
+          <div class="controls">
+            <label class="opt" for="outFormat">출력 형식</label>
+            <select id="outFormat">
+              <option value="nai">NAI (가중치::블록::)</option>
+              <option value="anima">Anima (@작가, 공백 표기)</option>
+            </select>
+            <label class="opt"><input type="checkbox" id="optAnimaWeight2" checked> 가중치 강화</label>
+            <label class="opt"><input type="checkbox" id="optAnimaNeg2" checked> 권장 네거티브</label>
+          </div>
+          <div class="nl-note" id="fmtNote"></div>
         </section>
 
         <section class="panel">
@@ -330,7 +340,7 @@
       <div class="col">
         <section class="panel">
           <div class="panel-head">
-            <h2 class="panel-title pos"><span class="stepnum">3</span>NAI 프롬프트 → 복사</h2>
+            <h2 class="panel-title pos"><span class="stepnum">3</span><span id="outTitle">NAI 프롬프트</span> → 복사</h2>
             <button id="copyNai" type="button" class="primary copy-big">복사</button>
           </div>
           <div class="out pos" id="naiOut"></div>
@@ -338,7 +348,7 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2 class="panel-title neg"><span class="stepnum">4</span>NAI UC (원치 않는 내용) → 복사</h2>
+            <h2 class="panel-title neg"><span class="stepnum">4</span><span id="outTitleNeg">NAI UC (원치 않는 내용)</span> → 복사</h2>
             <button id="copyNaiUc" type="button" class="primary copy-big">복사</button>
           </div>
           <div class="out neg" id="naiUcOut"></div>
@@ -418,6 +428,46 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2 class="panel-title">AI 연동 (선택)</h2>
+            <span class="count" id="aiState">사용 안 함</span>
+          </div>
+          <div class="controls">
+            <label class="opt" for="aiMode">모드</label>
+            <select id="aiMode">
+              <option value="off">사용 안 함 (사전만)</option>
+              <option value="assist">AI 보조 — 못 잡은 표현만</option>
+              <option value="full">AI 전체 — 문장 전부 맡김</option>
+            </select>
+            <label class="opt" for="aiProvider">제공자</label>
+            <select id="aiProvider">
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI</option>
+              <option value="google">Google (Gemini)</option>
+              <option value="custom">직접 입력 (OpenAI 호환)</option>
+            </select>
+          </div>
+          <div class="controls">
+            <input id="aiKey" type="password" spellcheck="false" placeholder="API 키를 붙여넣으세요"
+              style="flex:1;min-width:180px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
+            <button id="aiTest" type="button" class="primary">연결 확인</button>
+            <button id="aiRun" type="button" disabled>변환 실행</button>
+          </div>
+          <div class="controls" id="aiAdvRow">
+            <input id="aiModel" type="text" spellcheck="false" placeholder="모델 (비우면 기본값)"
+              style="flex:1;min-width:140px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
+            <input id="aiEndpoint" type="text" spellcheck="false" placeholder="엔드포인트 URL (직접 입력일 때만)"
+              style="flex:1;min-width:160px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
+            <label class="opt"><input type="checkbox" id="aiRemember" checked> 키 기억</label>
+          </div>
+          <div class="nl-note" id="aiNote">
+            <b style="color:var(--warn)">기본값은 사용 안 함입니다.</b> 켜면 입력한 문장이 해당 제공자 서버로 전송됩니다 — 그 외에는 이 도구가 네트워크를 쓰지 않습니다.<br>
+            API 키는 <b>각자 발급</b>받아 넣으세요. 키는 이 브라우저에만 저장되며 어디로도 보내지 않습니다. <b>공용 PC에서는 "키 기억"을 끄세요.</b><br>
+            AI가 만들어낸 태그는 <b>37,000개 사전과 대조</b>해서 존재하지 않는 것은 표시해 줍니다.
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2 class="panel-title">태그 사전</h2>
             <span class="count" id="dictCount"></span>
           </div>
@@ -487,7 +537,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v3.2 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v3.4 · 기본 오프라인 · AI 연동을 켠 경우에만 네트워크를 사용합니다</div>
   </footer>
 
 </div>
@@ -1220,16 +1270,65 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     ).join(', ');
   }
   let naiPlain = '', naiUcPlain = '';
+  // A1111/reforge chunk separator — not a tag, and meaningless outside SD.
+  const isBreak = t => /^(BREAK|AND)$/.test(t.trim());
+
+  function toAnimaItems(items, boost){
+    return items.filter(i => !isBreak(i.tag)).map(i => {
+      let text = i.tag;
+      if(/^<[^>]+>$/.test(text)) return { tag:text, weight:1, keep:true };  // LoRA etc
+      text = text.replace(/^artist\s*:\s*/i, '@').replace(/^by\s+/i, '@');
+      if(!/^score_\d/.test(text)) text = text.replace(/_/g, ' ');
+      return { tag:text, weight: boost ? animaWeight(i.weight) : i.weight };
+    });
+  }
+  function toAnima(items){
+    return items.map(i => i.keep || Math.abs(round2(i.weight)-1) < 0.001
+      ? escParens(i.tag)
+      : fmtPlain(i.tag, i.weight)).join(', ');
+  }
+  function toAnimaHtml(items){
+    return items.map(i => i.keep || Math.abs(round2(i.weight)-1) < 0.001
+      ? esc(escParens(i.tag))
+      : fmtHtml(i.tag, i.weight)).join(', ');
+  }
+
   function render2(){
+    const fmt = $('outFormat').value;
     const p = parseSDField($('sdPos').value);
     const n = parseSDField($('sdNeg').value);
-    naiPlain   = toNAI(p);
-    naiUcPlain = toNAI(n);
-    $('naiOut').innerHTML   = toNAIHtml(p);
-    $('naiUcOut').innerHTML = toNAIHtml(n);
+
+    if(fmt === 'anima'){
+      const boost = $('optAnimaWeight2').checked;
+      const pa = toAnimaItems(p, boost);
+      let na = toAnimaItems(n, boost);
+      if($('optAnimaNeg2').checked){
+        const ANIMA_NEG = ['worst quality','low quality','score_1','score_2','score_3','artist name'];
+        na = ANIMA_NEG.filter(q => !na.some(t => t.tag === q))
+                      .map(tag => ({ tag, weight:1 })).concat(na);
+      }
+      naiPlain   = toAnima(pa);
+      naiUcPlain = toAnima(na);
+      $('naiOut').innerHTML   = toAnimaHtml(pa);
+      $('naiUcOut').innerHTML = toAnimaHtml(na);
+      const dropped = p.concat(n).filter(i => isBreak(i.tag)).length;
+      $('outTitle').textContent = 'Anima 프롬프트';
+      $('outTitleNeg').textContent = 'Anima 네거티브';
+      $('fmtNote').innerHTML = 'Anima 형식으로 변환합니다 — <code>artist:이름</code> → <code>@이름</code>, 언더스코어 → 공백(<code>score_</code> 제외), LoRA는 그대로 통과.' +
+        (dropped ? ' <b style="color:var(--warn)">BREAK/AND ' + dropped + '개를 제거했습니다</b> (SD 전용 구분자라 Anima에서는 의미가 없습니다).' : '');
+    } else {
+      naiPlain   = toNAI(p);
+      naiUcPlain = toNAI(n);
+      $('naiOut').innerHTML   = toNAIHtml(p);
+      $('naiUcOut').innerHTML = toNAIHtml(n);
+      $('outTitle').textContent = 'NAI 프롬프트';
+      $('outTitleNeg').textContent = 'NAI UC (원치 않는 내용)';
+      $('fmtNote').innerHTML = '같은 가중치가 이어지면 하나의 블록으로 묶습니다. 네거티브는 NAI의 <b>UC</b> 칸에 넣으세요.';
+    }
   }
   $('sdPos').addEventListener('input', render2);
   $('sdNeg').addEventListener('input', render2);
+  ['outFormat','optAnimaWeight2','optAnimaNeg2'].forEach(id => $(id).addEventListener('change', render2));
   $('copyNai').onclick   = e => copy(e.target, naiPlain);
   $('copyNaiUc').onclick = e => copy(e.target, naiUcPlain);
   $('ex2').onclick = () => {
@@ -1504,6 +1603,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   let nlSdPlain = '', nlNaiPlain = '', nlNegPlain = '';
   const koChoice = new Map();   // korean phrase -> chosen tag string ('' = off)
   const koUser   = new Map();   // korean phrase -> tag(s) the user taught us
+  let aiTags = [], aiUnknown = [], aiMeta = null;   // results of an AI run
 
   // Long sentences carry endings the dictionary (mostly noun forms) can't
   // match. Normalising them lifts recognition a lot on prose input.
@@ -1716,6 +1816,13 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
 
     const art = analyzeArtists($('artInput').value);
     $('artCount').textContent = art.tags.length + '개';
+
+    // AI results sit alongside dictionary hits; unknown ones are still emitted
+    // but flagged in the note so the user can check them.
+    if(aiTags.length){
+      const have = new Set(pos.map(t => t.text));
+      aiTags.forEach(t => { if(!have.has(t)){ pos.push({ text:t, weight:1, fromAI:true }); have.add(t); } });
+    }
 
     const anima = $('optAnima').checked;
     // Anima wants its own quality vocabulary and a fixed section order:
@@ -2089,7 +2196,9 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   }
   function refreshDictUI(){
     const s = dictStatus();
-    $('dictCount').textContent = '사전 ' + dictSet.size.toLocaleString() + '개';
+    const dc = '사전 ' + dictSet.size.toLocaleString() + '개';
+    $('dictCount').textContent = dc;
+    $('dictCount2').textContent = dc;
     $('dsStatus').innerHTML = importedKoCount || importedTagCount
       ? '<b style="color:var(--neg)">불러옴</b> ' + esc(importedLabel) + ' — ' + esc(s)
       : '내장 사전만 사용 중 — ' + esc(s) + '. 아래에서 데이터셋을 불러오면 인식 범위가 크게 넓어집니다.';
@@ -2158,6 +2267,197 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     }
     refreshDictUI();
     loadBuiltInDataset(); // deliberately not awaited: first paint stays unblocked
+  })();
+
+  /* ======================================================
+     AI 연동 (선택) — 기본은 꺼져 있고, 켠 경우에만 네트워크를 씁니다.
+  ====================================================== */
+  const PROVIDERS = {
+    anthropic: {
+      name:'Anthropic', model:'claude-sonnet-4-6',
+      url: () => 'https://api.anthropic.com/v1/messages',
+      headers: k => ({ 'content-type':'application/json', 'x-api-key':k,
+                       'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }),
+      body: (m, sys, user) => ({ model:m, max_tokens:1000, system:sys, messages:[{role:'user',content:user}] }),
+      text: d => (d.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('')
+    },
+    openai: {
+      name:'OpenAI', model:'gpt-4o-mini',
+      url: () => 'https://api.openai.com/v1/chat/completions',
+      headers: k => ({ 'content-type':'application/json', 'authorization':'Bearer '+k }),
+      body: (m, sys, user) => ({ model:m, max_tokens:1000,
+        messages:[{role:'system',content:sys},{role:'user',content:user}] }),
+      text: d => d.choices?.[0]?.message?.content || ''
+    },
+    google: {
+      name:'Google', model:'gemini-2.0-flash',
+      url: (k, m) => 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + encodeURIComponent(k),
+      headers: () => ({ 'content-type':'application/json' }),
+      body: (m, sys, user) => ({ systemInstruction:{parts:[{text:sys}]},
+        contents:[{role:'user',parts:[{text:user}]}], generationConfig:{maxOutputTokens:1000} }),
+      text: d => (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join('')
+    },
+    custom: {
+      name:'직접 입력', model:'',
+      url: (k, m, ep) => ep,
+      headers: k => ({ 'content-type':'application/json', 'authorization':'Bearer '+k }),
+      body: (m, sys, user) => ({ model:m, max_tokens:1000,
+        messages:[{role:'system',content:sys},{role:'user',content:user}] }),
+      text: d => d.choices?.[0]?.message?.content || d.content?.[0]?.text || ''
+    }
+  };
+
+  const AI_SYS = 'You convert Korean image descriptions into Danbooru tags for an anime image generator.\n' +
+    'Rules:\n' +
+    '- Reply with a comma-separated list of English Danbooru tags. Nothing else. No prose, no numbering, no code fences.\n' +
+    '- Use lowercase, spaces instead of underscores.\n' +
+    '- Only output tags that plausibly exist on Danbooru. Do not invent descriptive phrases.\n' +
+    '- Do not add quality tags (masterpiece, best quality) — the tool adds those separately.\n' +
+    '- Do not add artist names.\n' +
+    '- If the input is already a tag, keep it as is.';
+
+  function aiCfg(){
+    const id = $('aiProvider').value;
+    const p  = PROVIDERS[id];
+    const model = $('aiModel').value.trim() || p.model;
+    return { id, p, model, key: $('aiKey').value.trim(), endpoint: $('aiEndpoint').value.trim() };
+  }
+
+  async function aiCall(userText){
+    const { p, model, key, endpoint, id } = aiCfg();
+    if(!key) throw new Error('API 키를 입력하세요.');
+    if(id === 'custom' && !endpoint) throw new Error('직접 입력은 엔드포인트 URL이 필요합니다.');
+    if(id === 'custom' && !model) throw new Error('직접 입력은 모델 이름이 필요합니다.');
+    const res = await fetch(p.url(key, model, endpoint), {
+      method:'POST', headers:p.headers(key), body:JSON.stringify(p.body(model, AI_SYS, userText))
+    });
+    if(!res.ok){
+      let msg = res.status + ' ' + res.statusText;
+      try{ const e = await res.json(); msg = e.error?.message || e.message || msg; }catch(_){}
+      throw new Error(msg);
+    }
+    return p.text(await res.json()).trim();
+  }
+
+  function aiParseTags(raw){
+    return raw.replace(/```[a-z]*|```/g,'')
+      .replace(/^\s*(?:here are|tags?|결과)[^:\n]*:/i,'')
+      .split(/[,\n]/)
+      // Strip list markers only — "1girl" must survive, so a digit is only
+      // dropped when followed by a separator like "1." or "2)".
+      .map(t => t.trim().replace(/^(?:[-*•]|\d+[.)])\s+/,'').trim().toLowerCase())
+      .filter(t => t && t.length < 60 && !/[가-힣]/.test(t));
+  }
+
+  $('aiTest').onclick = async () => {
+    const btn = $('aiTest'), old = btn.textContent;
+    btn.disabled = true; btn.textContent = '확인 중';
+    $('aiState').textContent = '연결 확인 중…';
+    try{
+      const out = await aiCall('테스트: 긴 머리 소녀');
+      const tags = aiParseTags(out);
+      if(!tags.length) throw new Error('응답이 비어 있습니다.');
+      $('aiState').innerHTML = '<span style="color:var(--neg)">연결 성공</span> · ' + esc(aiCfg().model);
+      $('aiNote').innerHTML = '<b style="color:var(--neg)">연결 성공.</b> 응답 예시: <code>' + esc(tags.slice(0,6).join(', ')) + '</code>' +
+        '<br>이제 모드를 <b>AI 보조</b> 또는 <b>AI 전체</b>로 바꾸고 <b>변환 실행</b>을 누르세요.';
+      $('aiRun').disabled = $('aiMode').value === 'off';
+      saveAiCfg();
+    }catch(e){
+      $('aiState').innerHTML = '<span style="color:var(--err)">연결 실패</span>';
+      $('aiNote').innerHTML = '<b style="color:var(--err)">연결 실패:</b> ' + esc(e.message) +
+        '<br>키·모델·제공자를 확인하세요. 브라우저에서 직접 호출하므로 <b>CORS를 허용하지 않는 제공자</b>는 실패할 수 있습니다.';
+    }finally{ btn.disabled = false; btn.textContent = old; }
+  };
+
+  $('aiRun').onclick = async () => {
+    const mode = $('aiMode').value;
+    if(mode === 'off') return;
+    const text = $('nlInput').value.trim();
+    if(!text){ $('aiNote').innerHTML = '먼저 한국어 문장을 입력하세요.'; return; }
+    const btn = $('aiRun'), old = btn.textContent;
+    btn.disabled = true; btn.textContent = '변환 중';
+    try{
+      let ask = text;
+      if(mode === 'assist'){
+        const { unmatched } = analyzeNL(text);
+        if(!unmatched.length){
+          $('aiNote').innerHTML = '사전이 이미 전부 인식했습니다. AI 호출이 필요 없습니다.';
+          return;
+        }
+        ask = '다음 표현들만 태그로 바꿔줘: ' + unmatched.join(', ');
+      }
+      const tags = aiParseTags(await aiCall(ask));
+      if(!tags.length){ $('aiNote').innerHTML = '<b style="color:var(--warn)">AI가 태그를 반환하지 않았습니다.</b>'; return; }
+      // AI can hallucinate tags, so check each against the dictionary.
+      const known = tags.filter(t => dictSet.has(normTag(t)));
+      const unknown = tags.filter(t => !dictSet.has(normTag(t)));
+      aiTags = mode === 'full' ? tags : tags;
+      aiUnknown = unknown;
+      aiMeta = { mode, count: tags.length };
+      render3();
+      $('aiNote').innerHTML = '<b style="color:var(--neg)">AI 태그 ' + tags.length + '개</b> 추가 · 사전 확인됨 ' + known.length + '개' +
+        (unknown.length ? ' · <b style="color:var(--warn)">사전에 없음 ' + unknown.length + '개</b>: ' +
+          unknown.slice(0,8).map(t => '<span class="chip">' + esc(t) + '</span>').join('') +
+          ' — 실제로 없는 태그일 수 있으니 확인하세요.' : '') +
+        '<br><button type="button" id="aiClear" class="chip add" style="margin-top:6px">AI 태그 지우기</button>';
+      $('aiClear').onclick = () => { aiTags = []; aiUnknown = []; aiMeta = null; render3(); $('aiNote').innerHTML = 'AI 태그를 지웠습니다.'; };
+    }catch(e){
+      $('aiNote').innerHTML = '<b style="color:var(--err)">변환 실패:</b> ' + esc(e.message);
+    }finally{ btn.disabled = false; btn.textContent = old; }
+  };
+
+  $('aiMode').addEventListener('change', () => {
+    const on = $('aiMode').value !== 'off';
+    $('aiRun').disabled = !on || !$('aiKey').value.trim();
+    $('aiState').textContent = on ? PROVIDERS[$('aiProvider').value].name + ' · ' + $('aiMode').options[$('aiMode').selectedIndex].text.split(' —')[0] : '사용 안 함';
+    if(!on){ aiTags = []; aiUnknown = []; aiMeta = null; render3(); }
+    saveAiCfg();
+  });
+  $('aiProvider').addEventListener('change', () => {
+    const p = PROVIDERS[$('aiProvider').value];
+    $('aiModel').placeholder = p.model ? '모델 (기본: ' + p.model + ')' : '모델 (필수)';
+    $('aiEndpoint').style.display = $('aiProvider').value === 'custom' ? '' : 'none';
+    saveAiCfg();
+  });
+  $('aiKey').addEventListener('input', () => {
+    $('aiRun').disabled = $('aiMode').value === 'off' || !$('aiKey').value.trim();
+  });
+  ['aiModel','aiEndpoint','aiRemember'].forEach(id => $(id).addEventListener('change', saveAiCfg));
+
+  async function saveAiCfg(){
+    try{
+      const db = await idb();
+      const cfg = { provider:$('aiProvider').value, mode:$('aiMode').value,
+        model:$('aiModel').value, endpoint:$('aiEndpoint').value,
+        key: $('aiRemember').checked ? $('aiKey').value : '', remember:$('aiRemember').checked };
+      await new Promise((res, rej) => {
+        const tx = db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).put(cfg,'aicfg');
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    }catch(e){}
+  }
+  (async () => {
+    try{
+      const db = await idb();
+      const cfg = await new Promise((res, rej) => {
+        const tx = db.transaction(STORE,'readonly');
+        const rq = tx.objectStore(STORE).get('aicfg');
+        rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+      });
+      if(cfg){
+        $('aiProvider').value = cfg.provider || 'anthropic';
+        $('aiMode').value = cfg.mode || 'off';
+        $('aiModel').value = cfg.model || '';
+        $('aiEndpoint').value = cfg.endpoint || '';
+        $('aiRemember').checked = cfg.remember !== false;
+        if(cfg.key) $('aiKey').value = cfg.key;
+        $('aiProvider').dispatchEvent(new Event('change'));
+        $('aiMode').dispatchEvent(new Event('change'));
+      } else {
+        $('aiProvider').dispatchEvent(new Event('change'));
+      }
+    }catch(e){ $('aiProvider').dispatchEvent(new Event('change')); }
   })();
 
   /* ======================================================
