@@ -132,6 +132,8 @@
   /* ---------- NL specifics ---------- */
   .nl-note{padding:11px 14px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--muted);line-height:1.7}
   .nl-note b{color:var(--warn);font-weight:500}
+  .issue-pick{flex:none;display:flex;align-items:flex-start;padding-top:2px;width:16px}
+  .manual{font-size:10px;color:var(--warn);border:1px solid var(--warn);border-radius:2px;padding:0 4px;font-weight:400;letter-spacing:0}
   .src-tag{font-size:10px;border-radius:2px;padding:0 5px;letter-spacing:.04em}
   .src-tag.p{color:var(--pos);border:1px solid var(--pos)}
   .src-tag.n{color:var(--neg);border:1px solid var(--neg)}
@@ -214,7 +216,8 @@
             <h2><span class="stepnum" style="margin-right:6px">2</span>문법 검사 <span style="font-weight:400;letter-spacing:0;text-transform:none;font-family:var(--mono);font-size:10px">· 내 태그 칸 포함</span></h2>
             <div style="display:flex;align-items:center;gap:12px">
               <div class="tally" id="tally"></div>
-              <button id="fixAllBtn" type="button" class="primary" disabled>전부 고치기</button>
+              <button id="fixSelBtn" type="button" class="primary" disabled>선택 고치기</button>
+        <button id="fixAllBtn" type="button" disabled>안전한 것 전부</button>
             </div>
           </div>
           <div id="issues"><div class="idle">입력하면 자동으로 검사합니다</div></div>
@@ -484,7 +487,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v3.0 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
+    <div>v3.2 · 오프라인 동작 · 입력은 브라우저 밖으로 나가지 않습니다</div>
   </footer>
 
 </div>
@@ -605,14 +608,19 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     if(cur.trim()) out.push(cur.trim());
     return out;
   }
+  // Unescaped parentheses inside a tag are read as emphasis by SD and break
+  // the surrounding weight group: "(artist:channel (caststation):1.4)".
+  function escParens(t){ return t.replace(/\\?([()])/g, '\\$1'); }
   function fmtHtml(text, w){
     w = round2(w);
-    return Math.abs(w-1) < 0.001 ? esc(text)
-      : '(' + esc(text) + '<span class="w">:' + wstr(w) + '</span>)';
+    const t = escParens(text);
+    return Math.abs(w-1) < 0.001 ? esc(t)
+      : '(' + esc(t) + '<span class="w">:' + wstr(w) + '</span>)';
   }
   function fmtPlain(text, w){
     w = round2(w);
-    return Math.abs(w-1) < 0.001 ? text : '(' + text + ':' + wstr(w) + ')';
+    const t = escParens(text);
+    return Math.abs(w-1) < 0.001 ? t : '(' + t + ':' + wstr(w) + ')';
   }
   function copy(btn, text){
     if(!text) return;
@@ -743,6 +751,20 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
           title:'가중치 ' + round2(t.weight) + ' — 비정상적으로 큼',
           detail:'중첩이 곱해졌거나 블록이 안 닫혀 값이 누적됐을 수 있습니다. 2를 넘기면 대개 이미지가 망가집니다.', fixLabel:null });
       }
+      if(/^\d+(\.\d+){2,}$/.test(t.text)){
+        list.push({ sev:'error', start:t.start, end:t.end,
+          title:'잘못된 가중치 <code>' + esc(t.text) + '</code>',
+          detail:'소수점이 여러 개라 가중치로 인식되지 못하고 태그가 됐습니다. <code>1.4</code>처럼 고치거나 지우세요.',
+          fixLabel:'지우기',
+          autofix:false,
+          apply: s => {
+            let a = t.start, b = t.end;
+            if(s[b] === ',') b++;
+            else if(s[a-1] === ',') a--;
+            return s.slice(0,a) + s.slice(b);
+          }
+        });
+      }
       const k = t.text.toLowerCase();
       if(seen.has(k)){
         const first = seen.get(k);
@@ -763,13 +785,18 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         const norm = normTag(t.text);
         if(norm && !dictSet.has(norm)){
           const near = nearestTag(norm);
-          if(near && near.dist > 0){
+          // A candidate that is the input with something prepended is a
+          // different concept, not a typo ("detailed eyes" → "undetailed eyes").
+          const prefixed = near && normTag(near.tag).endsWith(norm) && near.tag.length > norm.length;
+          if(near && near.dist > 0 && !prefixed){
             list.push({
               sev:'warn', start:t.start, end:t.end,
               title:'오타? <code>' + esc(t.text) + '</code> → <code>' + esc(near.tag) + '</code>',
               detail:'사전에 없는 태그인데 <code>' + esc(near.tag) + '</code>와 ' + near.dist + '글자 차이입니다. 의도한 태그라면 그대로 둬도 됩니다 — 사전에 없어도 그대로 통과합니다.',
               fixLabel:esc(near.tag) + ' 로',
-              autofix: near.dist === 1,
+              // Short words collide too easily ("evil" → "veil"), so never
+              // auto-apply those; they need a human eye.
+              autofix: near.dist === 1 && norm.length >= 6,
               apply: s => s.slice(0,t.start) + near.tag + s.slice(t.end)
             });
           }
@@ -781,6 +808,22 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       list.push({ sev:'warn', start:-1, end:-1,
         title:'아티스트 태그 ' + artistCount + '개',
         detail:'15명을 넘으면 스타일이 상쇄돼 특징 없는 그림이 나옵니다. 3~5명 권장.', fixLabel:null });
+    }
+    const years = tags.filter(t => /^year \d{4}$/i.test(t.text));
+    if(years.length > 1){
+      list.push({ sev:'warn', start:years[1].start, end:years[1].end,
+        title:'연도 태그 ' + years.length + '개 — <code>' + years.map(y => esc(y.text)).join('</code>, <code>') + '</code>',
+        detail:'서로 다른 연도를 함께 쓰면 화풍 기준이 섞여 어느 쪽도 제대로 걸리지 않습니다. 하나만 남기세요.',
+        fixLabel:'뒤엣것 삭제',
+        autofix:false,
+        apply: s => {
+          const y = years[1];
+          let a = y.start, b = y.end;
+          if(s[b] === ',') b++;
+          else if(s[a-1] === ',') a--;
+          return s.slice(0,a) + s.slice(b);
+        }
+      });
     }
     list.sort((a,b) => (a.start<0) - (b.start<0) || a.start - b.start);
     return list;
@@ -954,8 +997,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         let text = t.text.replace(/^artist\s*:\s*/i, '@').replace(/^by\s+/i, '@');
         if(!/^score_\d/.test(text)) text = text.replace(/_/g, ' ');
         let weight = t.weight;
-        if($('optAnimaWeight1').checked && weight !== 1)
-          weight = Math.min(round2(1 + (weight - 1) * 2.5), 2.2);
+        if($('optAnimaWeight1').checked) weight = animaWeight(weight);
         return { ...t, text, weight };
       };
       pos = pos.map(toAnima);
@@ -978,6 +1020,17 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     renderIssues(src);
   }
 
+  // Selected fixes are tracked by a content key so a re-render (which rebuilds
+  // the issue objects) keeps the user's ticks.
+  const issueSel = new Set();
+  const issueKey = x => (x.label || '') + '|' + x.sev + '|' + x.title.replace(/<[^>]+>/g,'') + '|' + x.start;
+  function updateSelBtn(){
+    const n = issues.filter(x => x.apply && issueSel.has(issueKey(x))).length;
+    const b = $('fixSelBtn');
+    b.disabled = n === 0;
+    b.textContent = n ? '선택 ' + n + '개 고치기' : '선택 고치기';
+  }
+
   function renderIssues(src){
     const box = $('issues');
     const anyInput = src.trim() || $('posInput').value.trim() || $('negInput').value.trim();
@@ -993,12 +1046,17 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     if(!issues.length){ box.innerHTML = '<div class="clean">문법 문제가 없습니다. 오른쪽에서 바로 복사하세요.</div>'; return; }
     box.innerHTML = issues.map((x,i) =>
       '<div class="issue">' +
+        (x.apply
+          ? '<label class="issue-pick"><input type="checkbox" data-sel="' + i + '"' +
+              (issueSel.has(issueKey(x)) ? ' checked' : '') + '></label>'
+          : '<span class="issue-pick"></span>') +
         '<div class="sev ' + x.sev + '"></div>' +
         '<div class="issue-body">' +
           '<p class="issue-title">' +
             (x.label ? '<span class="src-tag ' + (x.label === '긍정' ? 'p' : 'n') + '">' + x.label + '</span> ' : '') +
             x.title +
             (x.start >= 0 ? ' <span class="at">— ' + (x.start+1) + '번째 글자</span>' : '') +
+            (x.apply && x.autofix === false ? ' <span class="manual">확인 필요</span>' : '') +
           '</p>' +
           '<p class="issue-detail">' + x.detail + '</p>' +
         '</div>' +
@@ -1008,6 +1066,15 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         '</div>' +
       '</div>'
     ).join('');
+
+    box.querySelectorAll('[data-sel]').forEach(cb => {
+      cb.onchange = () => {
+        const k = issueKey(issues[+cb.dataset.sel]);
+        if(cb.checked) issueSel.add(k); else issueSel.delete(k);
+        updateSelBtn();
+      };
+    });
+    updateSelBtn();
     box.querySelectorAll('[data-show]').forEach(b => {
       b.onclick = () => {
         const i = +b.dataset.show, x = issues[i];
@@ -1058,6 +1125,21 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     activeIssue = -1;
     render();
   };
+  // Apply the ticked fixes right-to-left so each edit's captured offsets stay
+  // valid — an edit never shifts text before its own start.
+  $('fixSelBtn').onclick = () => {
+    const picked = issues.filter(x => x.apply && issueSel.has(issueKey(x)))
+                         .sort((a,b) => b.start - a.start);
+    if(!picked.length) return;
+    pushHistory();
+    let v = input.value;
+    picked.forEach(x => { try{ v = x.apply(v); }catch(e){} });
+    input.value = tidy(v);
+    issueSel.clear();
+    activeIssue = -1;
+    render();
+  };
+
   $('undoBtn').onclick = () => {
     if(!history.length) return;
     input.value = history.pop();
@@ -1440,6 +1522,17 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     return m;
   };
 
+  // Anima needs weights pushed harder than SDXL. Amplify symmetrically around
+  // 1 so de-emphasis (w < 1) stays positive instead of crossing into zero or
+  // negatives, which would silently invert or kill the tag.
+  function animaWeight(w){
+    if(!(w > 0) || w === 1) return w;
+    const k = 2.5;
+    const out = w > 1 ? 1 + (w - 1) * k
+                      : 1 / (1 + (1 / w - 1) * k);
+    return Math.min(Math.max(round2(out), 0.2), 2.2);
+  }
+
   function softenProse(text){
     let t = text;
     SENT_TRIM.forEach((re,i) => { t = t.replace(re, i === SENT_TRIM.length-1 ? '$1 ' : ' '); });
@@ -1481,6 +1574,8 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
         let wEnd = i + L;
         while(wEnd < text.length && isHangul(text[wEnd])) wEnd++;
         if(!ALLOWED_TAIL.has(text.slice(i + L, wEnd))) continue;
+        // A match made only of punctuation ("!!" from "!!!???") is noise.
+        if(!/[가-힣a-zA-Z0-9]/.test(slice)) continue;
         let free = true;
         for(let k = i; k < i + L; k++) if(claimed[k]){ free = false; break; }
         if(!free) break;
@@ -1638,7 +1733,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     if(anima){
       // Anima needs harder weights than SDXL: (tag:1.1) barely registers.
       if($('optAnimaWeight').checked)
-        P = P.map(t => ({ ...t, weight: t.weight === 1 ? 1 : Math.min(round2(1 + (t.weight - 1) * 2.5), 2.2) }));
+        P = P.map(t => ({ ...t, weight: animaWeight(t.weight) }));
       const counts  = P.filter(t => COUNT_RE.test(t.text));
       const general = P.filter(t => !COUNT_RE.test(t.text));
       const sources = art.tags.filter(t => t.kind === 'source').map(t => ({ text:t.text, weight:1 }));
