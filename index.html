@@ -436,7 +436,7 @@
             <select id="aiMode">
               <option value="off">사용 안 함 (사전만)</option>
               <option value="assist">AI 보조 — 못 잡은 표현만</option>
-              <option value="full">AI 전체 — 문장 전부 맡김</option>
+              <option value="full">AI 확장 — 전체 분석 후 사전에 추가</option>
             </select>
             <label class="opt" for="aiProvider">제공자</label>
             <select id="aiProvider">
@@ -537,7 +537,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v3.4 · 기본 오프라인 · AI 연동을 켠 경우에만 네트워크를 사용합니다</div>
+    <div>v3.5 · 기본 오프라인 · AI 연동을 켠 경우에만 네트워크를 사용합니다</div>
   </footer>
 
 </div>
@@ -1603,7 +1603,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   let nlSdPlain = '', nlNaiPlain = '', nlNegPlain = '';
   const koChoice = new Map();   // korean phrase -> chosen tag string ('' = off)
   const koUser   = new Map();   // korean phrase -> tag(s) the user taught us
-  let aiTags = [], aiUnknown = [], aiMeta = null;   // results of an AI run
+  let aiTags = [], aiUnknown = [], aiMeta = null, aiSrcText = '';   // results of an AI run
 
   // Long sentences carry endings the dictionary (mostly noun forms) can't
   // match. Normalising them lifts recognition a lot on prose input.
@@ -1940,7 +1940,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       });
     }catch(e){ /* storage unavailable — mappings just won't survive a reload */ }
   }
-  $('nlInput').addEventListener('input', render3);
+  $('nlInput').addEventListener('input', () => { render3(); if(aiMeta) renderAiNote(); });
   $('artInput').addEventListener('input', render3);
   $('nlReset').onclick = () => { koChoice.clear(); render3(); };
   $('teachSave').onclick = saveTeach;
@@ -2307,14 +2307,12 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     }
   };
 
-  const AI_SYS = 'You convert Korean image descriptions into Danbooru tags for an anime image generator.\n' +
-    'Rules:\n' +
-    '- Reply with a comma-separated list of English Danbooru tags. Nothing else. No prose, no numbering, no code fences.\n' +
-    '- Use lowercase, spaces instead of underscores.\n' +
-    '- Only output tags that plausibly exist on Danbooru. Do not invent descriptive phrases.\n' +
-    '- Do not add quality tags (masterpiece, best quality) — the tool adds those separately.\n' +
-    '- Do not add artist names.\n' +
-    '- If the input is already a tag, keep it as is.';
+  // AI is an optional candidate generator. The local dictionary remains the source of truth.
+  const AI_SYS = 'You assist a local Korean-to-Danbooru-tag dictionary for an anime image generator.\n' +
+    'Return only a comma-separated list of English Danbooru tag candidates. Nothing else.\n' +
+    'Use lowercase and spaces instead of underscores. Do not invent phrases.\n' +
+    'Do not add quality tags or artist names.\n' +
+    'If the input is already a tag, keep it as is.';
 
   function aiCfg(){
     const id = $('aiProvider').value;
@@ -2349,6 +2347,30 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       .filter(t => t && t.length < 60 && !/[가-힣]/.test(t));
   }
 
+  // One bounded retry handles transient network/provider failures without looping forever.
+  async function aiCallWithRetry(userText, retries = 1){
+    let lastError;
+    for(let attempt = 0; attempt <= retries; attempt++){
+      try{
+        const out = await aiCall(userText);
+        if(String(out || '').trim()) return out;
+        lastError = new Error('AI가 빈 응답을 반환했습니다.');
+      }catch(e){ lastError = e; }
+      if(attempt < retries) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+    throw lastError || new Error('AI 호출에 실패했습니다.');
+  }
+
+  function uniqueNormalized(tags){
+    const seen = new Set(), out = [];
+    tags.forEach(tag => {
+      const n = normTag(tag);
+      if(!n || seen.has(n)) return;
+      seen.add(n); out.push(tag);
+    });
+    return out;
+  }
+
   $('aiTest').onclick = async () => {
     const btn = $('aiTest'), old = btn.textContent;
     btn.disabled = true; btn.textContent = '확인 중';
@@ -2359,7 +2381,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       if(!tags.length) throw new Error('응답이 비어 있습니다.');
       $('aiState').innerHTML = '<span style="color:var(--neg)">연결 성공</span> · ' + esc(aiCfg().model);
       $('aiNote').innerHTML = '<b style="color:var(--neg)">연결 성공.</b> 응답 예시: <code>' + esc(tags.slice(0,6).join(', ')) + '</code>' +
-        '<br>이제 모드를 <b>AI 보조</b> 또는 <b>AI 전체</b>로 바꾸고 <b>변환 실행</b>을 누르세요.';
+        '<br>이제 모드를 <b>AI 보조</b> 또는 <b>AI 확장</b>으로 바꾸고 <b>변환 실행</b>을 누르세요.';
       $('aiRun').disabled = $('aiMode').value === 'off';
       saveAiCfg();
     }catch(e){
@@ -2369,6 +2391,37 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     }finally{ btn.disabled = false; btn.textContent = old; }
   };
 
+  // The AI note is re-rendered whenever candidates change, so the "add" chips
+  // stay in sync with what is actually in the output.
+  function renderAiNote(){
+    if(!aiMeta){ return; }
+    const stale = aiSrcText && aiSrcText !== $('nlInput').value.trim();
+    $('aiNote').innerHTML =
+      (stale ? '<b style="color:var(--warn)">입력이 바뀌었습니다.</b> 아래 AI 태그는 이전 문장 기준이니 다시 실행하거나 지우세요.<br>' : '') +
+      '<b style="color:var(--neg)">AI 후보 ' + aiMeta.count + '개</b> · 사전 확인 후 <b style="color:var(--neg)">' + aiTags.length + '개</b> 사용 중' +
+      (aiMeta.count && aiTags.length === 0 && !aiUnknown.length
+        ? '<br><b style="color:var(--warn)">사전에서 확인된 후보가 없어 추가하지 않았습니다.</b> 사전 결과는 그대로 유지됩니다.' : '') +
+      (aiUnknown.length
+        ? '<br><b style="color:var(--warn)">사전에 없는 후보 ' + aiUnknown.length + '개</b> — 사전이 오래됐거나 AI가 지어낸 것일 수 있습니다. 쓸 것만 눌러 추가하세요:<br>' +
+          aiUnknown.map(t => '<button type="button" class="chip add" data-aiadd="' + esc(t) + '">' + esc(t) + ' +</button>').join(' ')
+        : '') +
+      '<br><button type="button" id="aiClear" class="chip add" style="margin-top:6px">AI 추가 태그 지우기</button>';
+    $('aiNote').querySelectorAll('[data-aiadd]').forEach(b => {
+      b.onclick = () => {
+        const t = b.dataset.aiadd;
+        if(!aiTags.includes(t)) aiTags.push(t);
+        aiUnknown = aiUnknown.filter(x => x !== t);
+        aiMeta.added = aiTags.length;
+        render3(); renderAiNote();
+      };
+    });
+    $('aiClear').onclick = () => {
+      aiTags = []; aiUnknown = []; aiMeta = null; aiSrcText = '';
+      render3();
+      $('aiNote').innerHTML = 'AI 추가 태그를 지웠습니다. 사전 결과는 유지됩니다.';
+    };
+  }
+
   $('aiRun').onclick = async () => {
     const mode = $('aiMode').value;
     if(mode === 'off') return;
@@ -2376,33 +2429,44 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     if(!text){ $('aiNote').innerHTML = '먼저 한국어 문장을 입력하세요.'; return; }
     const btn = $('aiRun'), old = btn.textContent;
     btn.disabled = true; btn.textContent = '변환 중';
+
+    // Snapshot the local result first. AI is never allowed to replace it.
+    const local = analyzeNL(text);
     try{
       let ask = text;
       if(mode === 'assist'){
-        const { unmatched } = analyzeNL(text);
-        if(!unmatched.length){
-          $('aiNote').innerHTML = '사전이 이미 전부 인식했습니다. AI 호출이 필요 없습니다.';
+        if(!local.unmatched.length){
+          $('aiNote').innerHTML = '사전이 이미 전부 인식했습니다. AI 호출이 필요 없습니다. 현재 사전 결과를 유지합니다.';
+          render3();
           return;
         }
-        ask = '다음 표현들만 태그로 바꿔줘: ' + unmatched.join(', ');
+        ask = '다음 미매칭 표현에 대응할 수 있는 Danbooru 태그 후보만 반환해: ' + local.unmatched.join(', ');
       }
-      const tags = aiParseTags(await aiCall(ask));
-      if(!tags.length){ $('aiNote').innerHTML = '<b style="color:var(--warn)">AI가 태그를 반환하지 않았습니다.</b>'; return; }
-      // AI can hallucinate tags, so check each against the dictionary.
-      const known = tags.filter(t => dictSet.has(normTag(t)));
-      const unknown = tags.filter(t => !dictSet.has(normTag(t)));
-      aiTags = mode === 'full' ? tags : tags;
-      aiUnknown = unknown;
-      aiMeta = { mode, count: tags.length };
+
+      const raw = await aiCallWithRetry(ask, 1);
+      const parsed = uniqueNormalized(aiParseTags(raw));
+      if(!parsed.length){
+        aiTags = []; aiUnknown = []; aiMeta = { mode, count:0, fallback:true };
+        render3();
+        $('aiNote').innerHTML = '<b style="color:var(--warn)">AI가 추가 태그를 반환하지 않았습니다.</b> 사전 결과는 그대로 유지됩니다.';
+        return;
+      }
+
+      // Local dictionary is authoritative: only verified AI candidates can be added.
+      const known = parsed.filter(t => dictSet.has(normTag(t)));
+      const unknown = parsed.filter(t => !dictSet.has(normTag(t)));
+      aiTags = uniqueNormalized(known);
+      aiUnknown = uniqueNormalized(unknown);
+      aiMeta = { mode, count:parsed.length, added:aiTags.length, fallback:false };
+      aiSrcText = text;
       render3();
-      $('aiNote').innerHTML = '<b style="color:var(--neg)">AI 태그 ' + tags.length + '개</b> 추가 · 사전 확인됨 ' + known.length + '개' +
-        (unknown.length ? ' · <b style="color:var(--warn)">사전에 없음 ' + unknown.length + '개</b>: ' +
-          unknown.slice(0,8).map(t => '<span class="chip">' + esc(t) + '</span>').join('') +
-          ' — 실제로 없는 태그일 수 있으니 확인하세요.' : '') +
-        '<br><button type="button" id="aiClear" class="chip add" style="margin-top:6px">AI 태그 지우기</button>';
-      $('aiClear').onclick = () => { aiTags = []; aiUnknown = []; aiMeta = null; render3(); $('aiNote').innerHTML = 'AI 태그를 지웠습니다.'; };
+      renderAiNote();
     }catch(e){
-      $('aiNote').innerHTML = '<b style="color:var(--err)">변환 실패:</b> ' + esc(e.message);
+      // Hard failure must never erase or invalidate the local conversion.
+      aiTags = []; aiUnknown = []; aiMeta = { mode, count:0, fallback:true, error:true }; aiSrcText = '';
+      render3();
+      $('aiNote').innerHTML = '<b style="color:var(--warn)">AI 보조 실패:</b> ' + esc(e.message) +
+        '<br>사전 결과로 계속 작동했습니다. AI가 없어도 기존 태그는 삭제되지 않습니다.';
     }finally{ btn.disabled = false; btn.textContent = old; }
   };
 
