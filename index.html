@@ -452,9 +452,11 @@
             <button id="aiTest" type="button" class="primary">연결 확인</button>
             <button id="aiRun" type="button" disabled>변환 실행</button>
           </div>
+          <datalist id="aiModelList"></datalist>
           <div class="controls" id="aiAdvRow">
-            <input id="aiModel" type="text" spellcheck="false" placeholder="모델 (비우면 기본값)"
+            <input id="aiModel" type="text" spellcheck="false" list="aiModelList" placeholder="모델 (비우면 기본값)"
               style="flex:1;min-width:140px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
+            <button id="aiModelsBtn" type="button">모델 불러오기</button>
             <input id="aiEndpoint" type="text" spellcheck="false" placeholder="엔드포인트 URL (직접 입력일 때만)"
               style="flex:1;min-width:160px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none">
             <label class="opt"><input type="checkbox" id="aiRemember" checked> 키 기억</label>
@@ -462,7 +464,7 @@
           <div class="nl-note" id="aiNote">
             <b style="color:var(--warn)">기본값은 사용 안 함입니다.</b> 켜면 입력한 문장이 해당 제공자 서버로 전송됩니다 — 그 외에는 이 도구가 네트워크를 쓰지 않습니다.<br>
             API 키는 <b>각자 발급</b>받아 넣으세요. 키는 이 브라우저에만 저장되며 어디로도 보내지 않습니다. <b>공용 PC에서는 "키 기억"을 끄세요.</b><br>
-            AI가 만들어낸 태그는 <b>37,000개 사전과 대조</b>해서 존재하지 않는 것은 표시해 줍니다.
+            AI가 만들어낸 태그는 <b>37,000개 사전과 대조</b>해서 존재하지 않는 것은 표시해 줍니다.<br>모델은 <b>자유 입력</b>입니다 — <b>모델 불러오기</b>로 키가 실제 쓸 수 있는 목록을 받아오거나, 이름을 직접 적어도 됩니다.
           </div>
         </section>
 
@@ -537,7 +539,7 @@
 
   <footer>
     <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Positive 복사 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> Negative 복사</div>
-    <div>v3.5 · 기본 오프라인 · AI 연동을 켠 경우에만 네트워크를 사용합니다</div>
+    <div>v3.6 · 기본 오프라인 · AI 연동을 켠 경우에만 네트워크를 사용합니다</div>
   </footer>
 
 </div>
@@ -2274,7 +2276,10 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   ====================================================== */
   const PROVIDERS = {
     anthropic: {
-      name:'Anthropic', model:'claude-sonnet-4-6',
+      name:'Anthropic', model:'claude-sonnet-5',
+      models:['claude-sonnet-5','claude-opus-5','claude-haiku-4-5-20251001'],
+      listUrl: () => 'https://api.anthropic.com/v1/models?limit=100',
+      listParse: d => (d.data||[]).map(m => m.id),
       url: () => 'https://api.anthropic.com/v1/messages',
       headers: k => ({ 'content-type':'application/json', 'x-api-key':k,
                        'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }),
@@ -2283,6 +2288,9 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     },
     openai: {
       name:'OpenAI', model:'gpt-4o-mini',
+      models:['gpt-4o-mini','gpt-4o','gpt-4.1-mini'],
+      listUrl: () => 'https://api.openai.com/v1/models',
+      listParse: d => (d.data||[]).map(m => m.id),
       url: () => 'https://api.openai.com/v1/chat/completions',
       headers: k => ({ 'content-type':'application/json', 'authorization':'Bearer '+k }),
       body: (m, sys, user) => ({ model:m, max_tokens:1000,
@@ -2290,15 +2298,22 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       text: d => d.choices?.[0]?.message?.content || ''
     },
     google: {
-      name:'Google', model:'gemini-2.0-flash',
-      url: (k, m) => 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + encodeURIComponent(k),
-      headers: () => ({ 'content-type':'application/json' }),
+      name:'Google', model:'gemini-2.5-flash',
+      models:['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-3.7-flash'],
+      listUrl: () => 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',
+      listParse: d => (d.models||[])
+        .filter(m => (m.supportedGenerationMethods||[]).includes('generateContent'))
+        .map(m => String(m.name).replace(/^models\//,'')),
+      url: (k, m) => 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent',
+      headers: k => ({ 'content-type':'application/json', 'x-goog-api-key':k }),
       body: (m, sys, user) => ({ systemInstruction:{parts:[{text:sys}]},
         contents:[{role:'user',parts:[{text:user}]}], generationConfig:{maxOutputTokens:1000} }),
       text: d => (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join('')
     },
     custom: {
-      name:'직접 입력', model:'',
+      name:'직접 입력', model:'', models:[],
+      listUrl: (k, ep) => ep ? ep.replace(/\/(chat\/completions|completions|messages)\/?$/, '/models') : '',
+      listParse: d => (d.data||d.models||[]).map(m => m.id || m.name).filter(Boolean),
       url: (k, m, ep) => ep,
       headers: k => ({ 'content-type':'application/json', 'authorization':'Bearer '+k }),
       body: (m, sys, user) => ({ model:m, max_tokens:1000,
@@ -2313,6 +2328,27 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     'Use lowercase and spaces instead of underscores. Do not invent phrases.\n' +
     'Do not add quality tags or artist names.\n' +
     'If the input is already a tag, keep it as is.';
+
+  // Map the provider's raw error onto the thing the user actually has to change.
+  function aiDiagnose(msg){
+    const m = String(msg).toLowerCase();
+    const local = location.protocol === 'file:';
+    if(local)
+      return '<br><b style="color:var(--warn)">로컬 파일(file://)로 열려 있습니다.</b> 이 상태에서는 브라우저가 API 호출을 차단합니다. 배포된 주소(https://…)에서 사용하거나 로컬 서버로 여세요.';
+    if(/failed to fetch|networkerror|load failed/.test(m))
+      return '<br>요청이 브라우저에서 차단됐습니다. 광고 차단기·확장 프로그램을 끄고 다시 시도해 보세요.';
+    if(/401|unauthorized|invalid.*key|api key not valid/.test(m))
+      return '<br>키가 올바르지 않습니다. 앞뒤 공백이 붙지 않았는지, 제공자 선택이 키와 맞는지 확인하세요.';
+    if(/404|not found|does not exist|is not supported/.test(m))
+      return '<br><b>모델명 문제입니다.</b> 모델 칸을 비워 기본값을 쓰거나, 칸을 눌러 목록에서 고르세요. 오래된 모델은 종료돼 404가 납니다.';
+    if(/429|quota|rate limit/.test(m))
+      return '<br>사용량 한도에 걸렸습니다. 잠시 후 다시 시도하거나 무료 할당량을 확인하세요.';
+    if(/credit|billing|insufficient|balance/.test(m))
+      return '<br>결제 잔액이 없습니다. 제공자 콘솔에서 크레딧을 충전해야 합니다.';
+    if(/cors/.test(m))
+      return '<br>CORS 차단입니다. 이 제공자는 브라우저 직접 호출을 막고 있으니 다른 제공자를 쓰세요.';
+    return '<br>키·모델·제공자 조합을 확인하세요.';
+  }
 
   function aiCfg(){
     const id = $('aiProvider').value;
@@ -2371,6 +2407,37 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
     return out;
   }
 
+  // Ask the provider which models this key can actually use, instead of
+  // making the user guess a name that may have been retired.
+  $('aiModelsBtn').onclick = async () => {
+    const { p, key, endpoint } = aiCfg();
+    const btn = $('aiModelsBtn'), old = btn.textContent;
+    if(!key){ $('aiNote').innerHTML = '<b style="color:var(--warn)">먼저 API 키를 입력하세요.</b>'; return; }
+    const url = p.listUrl ? p.listUrl(key, endpoint) : '';
+    if(!url){ $('aiNote').innerHTML = '<b style="color:var(--warn)">이 제공자는 모델 목록을 제공하지 않습니다. 이름을 직접 입력하세요.</b>'; return; }
+    btn.disabled = true; btn.textContent = '불러오는 중';
+    try{
+      const res = await fetch(url, { headers: p.headers(key) });
+      if(!res.ok){
+        let msg = res.status + ' ' + res.statusText;
+        try{ const e = await res.json(); msg = e.error?.message || e.message || msg; }catch(_){}
+        throw new Error(msg);
+      }
+      const list = (p.listParse(await res.json()) || []).filter(Boolean).sort();
+      if(!list.length) throw new Error('목록이 비어 있습니다.');
+      $('aiModelList').innerHTML = list.map(m => '<option value="' + esc(m) + '">').join('');
+      $('aiNote').innerHTML = '<b style="color:var(--neg)">모델 ' + list.length + '개</b>를 불러왔습니다. 모델 칸을 클릭하면 목록에서 고를 수 있습니다.<br>' +
+        list.slice(0,12).map(m => '<button type="button" class="chip add" data-pickmodel="' + esc(m) + '">' + esc(m) + '</button>').join(' ') +
+        (list.length > 12 ? ' <span class="chip">외 ' + (list.length-12) + '개</span>' : '');
+      $('aiNote').querySelectorAll('[data-pickmodel]').forEach(b => {
+        b.onclick = () => { $('aiModel').value = b.dataset.pickmodel; saveAiCfg();
+          $('aiNote').innerHTML = '모델을 <b style="color:var(--pos)">' + esc(b.dataset.pickmodel) + '</b>로 지정했습니다. <b>연결 확인</b>을 눌러 검증하세요.'; };
+      });
+    }catch(e){
+      $('aiNote').innerHTML = '<b style="color:var(--err)">모델 목록 실패:</b> ' + esc(e.message) + aiDiagnose(e.message);
+    }finally{ btn.disabled = false; btn.textContent = old; }
+  };
+
   $('aiTest').onclick = async () => {
     const btn = $('aiTest'), old = btn.textContent;
     btn.disabled = true; btn.textContent = '확인 중';
@@ -2386,8 +2453,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       saveAiCfg();
     }catch(e){
       $('aiState').innerHTML = '<span style="color:var(--err)">연결 실패</span>';
-      $('aiNote').innerHTML = '<b style="color:var(--err)">연결 실패:</b> ' + esc(e.message) +
-        '<br>키·모델·제공자를 확인하세요. 브라우저에서 직접 호출하므로 <b>CORS를 허용하지 않는 제공자</b>는 실패할 수 있습니다.';
+      $('aiNote').innerHTML = '<b style="color:var(--err)">연결 실패:</b> ' + esc(e.message) + aiDiagnose(e.message);
     }finally{ btn.disabled = false; btn.textContent = old; }
   };
 
@@ -2466,7 +2532,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
       aiTags = []; aiUnknown = []; aiMeta = { mode, count:0, fallback:true, error:true }; aiSrcText = '';
       render3();
       $('aiNote').innerHTML = '<b style="color:var(--warn)">AI 보조 실패:</b> ' + esc(e.message) +
-        '<br>사전 결과로 계속 작동했습니다. AI가 없어도 기존 태그는 삭제되지 않습니다.';
+        '<br>사전 결과로 계속 작동했습니다. AI가 없어도 기존 태그는 삭제되지 않습니다.' + aiDiagnose(e.message);
     }finally{ btn.disabled = false; btn.textContent = old; }
   };
 
@@ -2480,6 +2546,7 @@ bad hands,bad anatomy,bad face,bad feet,bad proportions,bad perspective,extra di
   $('aiProvider').addEventListener('change', () => {
     const p = PROVIDERS[$('aiProvider').value];
     $('aiModel').placeholder = p.model ? '모델 (기본: ' + p.model + ')' : '모델 (필수)';
+    $('aiModelList').innerHTML = (p.models || []).map(m => '<option value="' + esc(m) + '">').join('');
     $('aiEndpoint').style.display = $('aiProvider').value === 'custom' ? '' : 'none';
     saveAiCfg();
   });
